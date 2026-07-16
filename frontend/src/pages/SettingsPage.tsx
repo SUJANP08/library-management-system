@@ -1,0 +1,140 @@
+import React, { useEffect, useState } from "react";
+import { api, downloadBlob } from "../api/client";
+import { useAuth } from "../context/AuthContext";
+
+export default function SettingsPage() {
+  const { isAdmin, user } = useAuth();
+  const [history, setHistory] = useState<any[]>([]);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [wipeExisting, setWipeExisting] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreMsg, setRestoreMsg] = useState<string | null>(null);
+
+  const [users, setUsers] = useState<any[]>([]);
+  const [newUser, setNewUser] = useState({ username: "", password: "", full_name: "", role: "staff" });
+
+  function loadHistory() {
+    if (isAdmin) api.get("/backup/history").then((res) => setHistory(res.data));
+  }
+  function loadUsers() {
+    if (isAdmin) api.get("/auth/users").then((res) => setUsers(res.data));
+  }
+  useEffect(() => { loadHistory(); loadUsers(); }, [isAdmin]);
+
+  async function handleExport() {
+    const res = await api.get("/backup/export", { responseType: "blob" });
+    downloadBlob(res.data, `library_backup_${new Date().toISOString().slice(0, 10)}.json`);
+    loadHistory();
+  }
+
+  async function handleRestore(e: React.FormEvent) {
+    e.preventDefault();
+    if (!restoreFile) return;
+    if (wipeExisting && !confirm("This will ERASE all current data before restoring. Continue?")) return;
+    setRestoring(true);
+    setRestoreMsg(null);
+    const formData = new FormData();
+    formData.append("file", restoreFile);
+    try {
+      const res = await api.post("/backup/import", formData, {
+        params: { wipe_existing: wipeExisting },
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setRestoreMsg(`Restored: ${res.data.books_restored} books, ${res.data.magazines_restored} magazines, ${res.data.series_restored} series.`);
+    } catch (err: any) {
+      setRestoreMsg(err?.response?.data?.detail || "Restore failed");
+    } finally {
+      setRestoring(false);
+    }
+  }
+
+  async function handleCreateUser(e: React.FormEvent) {
+    e.preventDefault();
+    await api.post("/auth/users", newUser);
+    setNewUser({ username: "", password: "", full_name: "", role: "staff" });
+    loadUsers();
+  }
+
+  async function handleDeleteUser(id: number) {
+    if (!confirm("Remove this user?")) return;
+    await api.delete(`/auth/users/${id}`);
+    loadUsers();
+  }
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-xl font-bold text-gray-900">Settings</h2>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-2">
+        <h3 className="font-semibold text-gray-700 text-sm">Account</h3>
+        <p className="text-sm text-gray-600">Signed in as <strong>{user?.username}</strong> ({user?.role})</p>
+      </div>
+
+      {isAdmin && (
+        <>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
+            <h3 className="font-semibold text-gray-700 text-sm">Backup</h3>
+            <p className="text-xs text-gray-500">Download a full JSON snapshot of all series, books, copies, magazines, and issues.</p>
+            <button onClick={handleExport} className="bg-brand-600 text-white text-sm font-medium px-4 py-2.5 rounded-lg">
+              ⬇️ Download Backup
+            </button>
+            {history.length > 0 && (
+              <div className="text-xs text-gray-500 pt-2 space-y-1">
+                <p className="font-medium text-gray-600">Recent backups:</p>
+                {history.slice(0, 5).map((h) => (
+                  <p key={h.id}>{h.filename} — {h.record_count} records — {new Date(h.created_at).toLocaleString()}</p>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
+            <h3 className="font-semibold text-gray-700 text-sm">Restore</h3>
+            <p className="text-xs text-gray-500">Upload a previously downloaded backup JSON file to restore data.</p>
+            <form onSubmit={handleRestore} className="space-y-3">
+              <input type="file" accept=".json" onChange={(e) => setRestoreFile(e.target.files?.[0] || null)} required className="w-full text-sm" />
+              <label className="flex items-center gap-2 text-xs text-gray-600">
+                <input type="checkbox" checked={wipeExisting} onChange={(e) => setWipeExisting(e.target.checked)} />
+                Erase existing data before restoring (use with caution)
+              </label>
+              <button type="submit" disabled={restoring} className="bg-amber-600 text-white text-sm font-medium px-4 py-2.5 rounded-lg disabled:opacity-60">
+                {restoring ? "Restoring..." : "Restore Backup"}
+              </button>
+            </form>
+            {restoreMsg && <p className="text-sm bg-gray-50 rounded-lg p-2">{restoreMsg}</p>}
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
+            <h3 className="font-semibold text-gray-700 text-sm">User Management</h3>
+            <div className="space-y-2">
+              {users.map((u) => (
+                <div key={u.id} className="flex justify-between items-center text-sm bg-gray-50 rounded-lg px-3 py-2">
+                  <span>{u.username} <span className="text-xs text-gray-400">({u.role})</span></span>
+                  {u.username !== user?.username && (
+                    <button onClick={() => handleDeleteUser(u.id)} className="text-red-600 text-xs font-medium">Remove</button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <form onSubmit={handleCreateUser} className="grid sm:grid-cols-2 gap-2 pt-2">
+              <input className="border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Username"
+                     value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} required />
+              <input type="password" className="border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Password"
+                     value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} required />
+              <input className="border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Full name"
+                     value={newUser.full_name} onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })} />
+              <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm" value={newUser.role}
+                      onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}>
+                <option value="staff">Staff</option>
+                <option value="admin">Admin</option>
+              </select>
+              <button type="submit" className="sm:col-span-2 bg-brand-600 text-white text-sm font-medium py-2.5 rounded-lg">
+                + Add User
+              </button>
+            </form>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
