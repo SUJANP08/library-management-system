@@ -3,7 +3,10 @@ import axios from "axios";
 // In dev, Vite proxies /api to the FastAPI backend (see vite.config.ts).
 // In production, set VITE_API_BASE_URL to the deployed backend URL, or
 // serve frontend+backend behind the same reverse proxy so relative /api works.
-const baseURL = import.meta.env.VITE_API_BASE_URL || "/api";
+const baseURL =
+  import.meta.env.VITE_API_BASE_URL
+    ? `${import.meta.env.VITE_API_BASE_URL}/api`
+    : "/api";
 
 export const api = axios.create({ baseURL });
 
