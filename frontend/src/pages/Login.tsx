@@ -95,7 +95,7 @@ export default function Login() {
           </form>
 
           <p className="text-xs text-stone-400 text-center md:text-left mt-6">
-            Default admin: admin / admin123 (change after first login)
+            
           </p>
         </div>
       </div>
