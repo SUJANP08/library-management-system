@@ -49,19 +49,7 @@ export default function Login() {
             </p>
           </div>
 
-          <div className="space-y-3.5 mt-10">
-            {[
-              
-            ].map((f) => (
-              <div key={f.label} className="flex items-center gap-3 text-cream-100/80 text-[13px]">
-                <span className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
-                  <f.Icon className="w-4 h-4" strokeWidth={1.8} />
-                </span>
-                {f.label}
-              </div>
-            ))}
-          </div>
-        </div>
+          
 
         {/* Right: form panel */}
         <div className="bg-white/95 backdrop-blur-xl p-8 sm:p-10 flex flex-col justify-center">
