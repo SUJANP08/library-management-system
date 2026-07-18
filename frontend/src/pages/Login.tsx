@@ -41,28 +41,14 @@ export default function Login() {
               <img src="/brand/kak-logo.jpg" alt="KAK logo" className="w-full h-full object-cover rounded-[13px]" />
             </div>
             <h1 className="font-display text-3xl font-semibold text-white mt-8 leading-tight">
-              Sri Kutlaya<br />Adhyayna Kendra
+              Sri Kutlaya<br />Adhyayna Kendra(R)
             </h1>
             <p className="text-cream-200/60 text-sm mt-3 leading-relaxed max-w-xs">
-              ಶ್ರೀ ಕುಟ್ಲಯ್ಯ ಅಧ್ಯಯನ ಕೇಂದ್ರ (ರಿ) — a digital home for the library's books,
-              taranga collection and archives.
+              ಶ್ರೀ ಕುಟ್ಲಯ್ಯ ಅಧ್ಯಯನ ಕೇಂದ್ರ (ರಿ) — A digital home for the library's books
             </p>
           </div>
 
-          <div className="space-y-3.5 mt-10">
-            {[
-              { Icon: IconBook, label: "Catalogue every book & copy in seconds" },
-              { Icon: IconLayers, label: "Organize by Main Series & Sub-Series" },
-              { Icon: IconNewspaper, label: "Track Taranga issues effortlessly" },
-            ].map((f) => (
-              <div key={f.label} className="flex items-center gap-3 text-cream-100/80 text-[13px]">
-                <span className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
-                  <f.Icon className="w-4 h-4" strokeWidth={1.8} />
-                </span>
-                {f.label}
-              </div>
-            ))}
-          </div>
+          
         </div>
 
         {/* Right: form panel */}
