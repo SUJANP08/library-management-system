@@ -1,5 +1,7 @@
 import io
+import re
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import StreamingResponse
@@ -15,9 +17,12 @@ router = APIRouter(prefix="/api/reports", tags=["Reports"])
 
 
 def _collect_rows(db: Session, series_id: Optional[int], series_code: Optional[str],
+                   sub_series_id: Optional[int],
                    author: Optional[str], search: Optional[str],
                    order_by: str = "series") -> tuple[list[dict], str]:
-    q = db.query(models.Book).options(joinedload(models.Book.series), joinedload(models.Book.copies))
+    q = db.query(models.Book).options(
+        joinedload(models.Book.series), joinedload(models.Book.sub_series), joinedload(models.Book.copies)
+    )
     report_title = "Library Report - All Series"
 
     if series_id:
@@ -28,6 +33,11 @@ def _collect_rows(db: Session, series_id: Optional[int], series_code: Optional[s
     if series_code:
         q = q.join(models.Series).filter(models.Series.code == series_code.upper())
         report_title = f"Library Report - {series_code.upper()}"
+    if sub_series_id:
+        q = q.filter(models.Book.sub_series_id == sub_series_id)
+        sub = db.query(models.SubSeries).filter(models.SubSeries.id == sub_series_id).first()
+        if sub:
+            report_title += f" / {sub.name}"
     if author:
         q = q.filter(models.Book.author.ilike(f"%{author}%"))
     if search:
@@ -50,6 +60,7 @@ def _collect_rows(db: Session, series_id: Optional[int], series_code: Optional[s
                 "title": b.title,
                 "author": b.author,
                 "category": b.series.name,
+                "sub_category": b.sub_series.name if b.sub_series else "—",
                 "_series_key": (b.series_id, b.base_serial, c.copy_number),
                 "_latest_key": c.created_at or b.created_at,
             })
@@ -69,9 +80,24 @@ def _collect_rows(db: Session, series_id: Optional[int], series_code: Optional[s
 ORDER_LABELS = {"series": "Series Order", "latest": "Latest Added Order"}
 
 
+def _content_disposition(filename: str) -> str:
+    """
+    Build a Content-Disposition header that survives non-ASCII (e.g. Kannada)
+    report titles. HTTP header values must be Latin-1 encodable, so a filename
+    containing Kannada characters raised a UnicodeEncodeError and crashed the
+    download (both PDF and Excel) before any bytes were sent. We now send an
+    ASCII-safe fallback name plus the proper RFC 5987/6266 filename* parameter
+    with the real Unicode name, so browsers save the file with the correct
+    (Kannada) name while older clients still get a sane ASCII fallback.
+    """
+    ascii_fallback = re.sub(r"[^A-Za-z0-9._-]+", "_", filename).strip("_") or "report"
+    return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{quote(filename)}"
+
+
 @router.get("/books/pdf")
 def export_books_pdf(
     series_id: Optional[int] = None, series_code: Optional[str] = None,
+    sub_series_id: Optional[int] = None,
     author: Optional[str] = None, search: Optional[str] = None,
     order_by: str = Query(
         "series", pattern="^(series|latest)$",
@@ -79,18 +105,19 @@ def export_books_pdf(
     ),
     db: Session = Depends(get_db), _user: models.User = Depends(auth.get_current_user),
 ):
-    rows, title = _collect_rows(db, series_id, series_code, author, search, order_by)
+    rows, title = _collect_rows(db, series_id, series_code, sub_series_id, author, search, order_by)
     pdf_bytes = generate_books_pdf(rows, title, order_label=ORDER_LABELS[order_by])
     filename = title.replace(" ", "_").replace("(", "").replace(")", "") + ".pdf"
     return StreamingResponse(
         io.BytesIO(pdf_bytes), media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": _content_disposition(filename)},
     )
 
 
 @router.get("/books/excel")
 def export_books_excel(
     series_id: Optional[int] = None, series_code: Optional[str] = None,
+    sub_series_id: Optional[int] = None,
     author: Optional[str] = None, search: Optional[str] = None,
     order_by: str = Query(
         "series", pattern="^(series|latest)$",
@@ -98,13 +125,13 @@ def export_books_excel(
     ),
     db: Session = Depends(get_db), _user: models.User = Depends(auth.get_current_user),
 ):
-    rows, title = _collect_rows(db, series_id, series_code, author, search, order_by)
+    rows, title = _collect_rows(db, series_id, series_code, sub_series_id, author, search, order_by)
     xlsx_bytes = generate_books_excel(rows, title, order_label=ORDER_LABELS[order_by])
     filename = title.replace(" ", "_").replace("(", "").replace(")", "") + ".xlsx"
     return StreamingResponse(
         io.BytesIO(xlsx_bytes),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": _content_disposition(filename)},
     )
 
 
@@ -117,7 +144,7 @@ async def import_books_excel(
 ):
     """
     Bulk import books from an Excel file into the given series.
-    Expected columns (header row, any order): Title, Author, Language, Publisher, Year, ISBN, Notes
+    Expected columns (header row, any order): Title, Author, Language, Publisher, Year, ISBN, Notes, Sub Series (optional)
     Duplicate (title, author) pairs are automatically added as additional copies.
     """
     series = db.query(models.Series).filter(models.Series.id == series_id).first()
@@ -140,6 +167,8 @@ async def import_books_excel(
     idx_title, idx_author = col("title"), col("author")
     idx_lang, idx_pub, idx_year, idx_isbn, idx_notes = (
         col("language"), col("publisher"), col("year"), col("isbn"), col("notes"))
+    idx_subseries = col("sub series") if col("sub series") is not None else (
+        col("sub-series") if col("sub-series") is not None else col("category"))
 
     if idx_title is None or idx_author is None:
         raise HTTPException(status_code=400, detail="Excel file must have 'Title' and 'Author' columns")
@@ -151,6 +180,7 @@ async def import_books_excel(
         try:
             payload = schemas.BookCreate(
                 series_id=series_id,
+                sub_series_name=str(row[idx_subseries]).strip() if idx_subseries is not None and row[idx_subseries] else None,
                 title=str(row[idx_title]).strip(),
                 author=str(row[idx_author]).strip() if idx_author is not None and row[idx_author] else "Unknown",
                 language=str(row[idx_lang]).strip() if idx_lang is not None and row[idx_lang] else None,

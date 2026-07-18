@@ -59,6 +59,32 @@ class SeriesOut(BaseModel):
     next_serial: int
     is_active: bool
     book_count: Optional[int] = 0
+    sub_series_count: Optional[int] = 0
+
+
+# ---------- Sub-Series / Category ----------
+class SubSeriesCreate(BaseModel):
+    series_id: int
+    name: str = Field(..., min_length=1, max_length=255, description="e.g. Kadambari, Kavana, Biography")
+    description: Optional[str] = None
+
+
+class SubSeriesUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class SubSeriesOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    series_id: int
+    series_code: str = ""
+    series_name: str = ""
+    name: str
+    description: Optional[str] = None
+    is_active: bool
+    book_count: Optional[int] = 0
 
 
 # ---------- Book Copies ----------
@@ -82,6 +108,11 @@ class BookCopyUpdate(BaseModel):
 # ---------- Books ----------
 class BookCreate(BaseModel):
     series_id: int
+    sub_series_id: Optional[int] = None
+    sub_series_name: Optional[str] = Field(
+        None, description="If provided and sub_series_id is not, a new sub-series with this name "
+                           "is created (or reused if it already exists) under series_id."
+    )
     title: str
     author: str
     language: Optional[str] = None
@@ -94,6 +125,8 @@ class BookCreate(BaseModel):
 class BookUpdate(BaseModel):
     title: Optional[str] = None
     author: Optional[str] = None
+    sub_series_id: Optional[int] = None
+    sub_series_name: Optional[str] = None
     language: Optional[str] = None
     publisher: Optional[str] = None
     year_published: Optional[int] = None
@@ -107,6 +140,8 @@ class BookOut(BaseModel):
     series_id: int
     series_code: str = ""
     series_name: str = ""
+    sub_series_id: Optional[int] = None
+    sub_series_name: Optional[str] = None
     base_serial: int
     title: str
     author: str
@@ -200,7 +235,57 @@ class MagazineOut(BaseModel):
 # ---------- Dashboard ----------
 class DashboardStats(BaseModel):
     total_books: int
+    total_series: int
+    total_sub_series: int
+    total_taranga: int
+    added_this_month: int
     recent_additions: List[BookOut]
+
+
+# ---------- Category Finder / Book Classification Assistant ----------
+class CategorySuggestionRequest(BaseModel):
+    title: str
+    author: Optional[str] = None
+
+
+class ExactMatchOut(BaseModel):
+    book_id: int
+    display_serial: str
+    title: str
+    author: str
+    series_id: int
+    series_code: str
+    series_name: str
+    sub_series_id: Optional[int] = None
+    sub_series_name: Optional[str] = None
+
+
+class CategorySuggestionOut(BaseModel):
+    series_id: int
+    series_code: str
+    series_name: str
+    sub_series_id: Optional[int] = None
+    sub_series_name: Optional[str] = None
+    confidence: float  # 0-1
+    reason: str
+
+
+class CategorySuggestionResponse(BaseModel):
+    exact_match: Optional[ExactMatchOut] = None
+    suggestions: List[CategorySuggestionOut] = []
+    similar_titles: List[ExactMatchOut] = []
+    ml_active: bool = False
+    trained_on_books: int = 0
+    recommend_new_category: bool = False
+
+
+class ModelStatusOut(BaseModel):
+    sklearn_available: bool
+    active: bool
+    trained_on_books: int
+    classes: int
+    total_books: int
+    min_books_required: int
 
 
 # ---------- Pagination wrapper ----------

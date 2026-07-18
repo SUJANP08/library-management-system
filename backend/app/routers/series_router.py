@@ -10,8 +10,12 @@ router = APIRouter(prefix="/api/series", tags=["Series Management"])
 
 def _series_to_out(db: Session, s: models.Series) -> schemas.SeriesOut:
     count = db.query(func.count(models.Book.id)).filter(models.Book.series_id == s.id).scalar()
+    sub_count = db.query(func.count(models.SubSeries.id)).filter(
+        models.SubSeries.series_id == s.id, models.SubSeries.is_active == True  # noqa: E712
+    ).scalar()
     out = schemas.SeriesOut.model_validate(s)
     out.book_count = count or 0
+    out.sub_series_count = sub_count or 0
     return out
 
 

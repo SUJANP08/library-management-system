@@ -18,12 +18,12 @@ interface Props {
  */
 export default function OrderModeToggle({ value, onChange, className = "" }: Props) {
   return (
-    <div className={`inline-flex rounded-lg border border-gray-200 bg-white p-0.5 shadow-sm ${className}`}>
+    <div className={`inline-flex rounded-lg border border-stone-200 bg-white p-0.5 shadow-sm ${className}`}>
       <button
         type="button"
         onClick={() => onChange("series")}
         className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-          value === "series" ? "bg-brand-600 text-white" : "text-gray-600 hover:bg-gray-50"
+          value === "series" ? "bg-brand-600 text-white" : "text-stone-600 hover:bg-stone-50"
         }`}
       >
         Series Order
@@ -32,7 +32,7 @@ export default function OrderModeToggle({ value, onChange, className = "" }: Pro
         type="button"
         onClick={() => onChange("latest")}
         className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-          value === "latest" ? "bg-brand-600 text-white" : "text-gray-600 hover:bg-gray-50"
+          value === "latest" ? "bg-brand-600 text-white" : "text-stone-600 hover:bg-stone-50"
         }`}
       >
         Latest Added

@@ -43,8 +43,9 @@ def export_backup(db: Session = Depends(get_db), admin: models.User = Depends(au
     data = {
         "exported_at": datetime.utcnow().isoformat(),
         "exported_by": admin.username,
-        "version": "1.0",
+        "version": "1.1",
         "series": _serialize_table(db.query(models.Series).all()),
+        "sub_series": _serialize_table(db.query(models.SubSeries).all()),
         "books": _serialize_table(db.query(models.Book).all()),
         "book_copies": _serialize_table(db.query(models.BookCopy).all()),
         "magazines": _serialize_table(db.query(models.Magazine).all()),
@@ -98,6 +99,7 @@ async def import_backup(
         db.query(models.Magazine).delete()
         db.query(models.BookCopy).delete()
         db.query(models.Book).delete()
+        db.query(models.SubSeries).delete()
         db.query(models.Series).delete()
         db.commit()
 
@@ -117,10 +119,29 @@ async def import_backup(
             series_id_map[old_id] = new_series.id
     db.commit()
 
+    sub_series_id_map = {}
+    for ss in data.get("sub_series", []):
+        old_id = ss.pop("id", None)
+        ss["series_id"] = series_id_map.get(ss["series_id"], ss["series_id"])
+        existing = db.query(models.SubSeries).filter(
+            models.SubSeries.series_id == ss["series_id"], models.SubSeries.name == ss["name"]
+        ).first()
+        if existing:
+            sub_series_id_map[old_id] = existing.id
+        else:
+            clean = {k: v for k, v in ss.items() if k not in ("created_at", "updated_at")}
+            new_sub = models.SubSeries(**clean)
+            db.add(new_sub)
+            db.flush()
+            sub_series_id_map[old_id] = new_sub.id
+    db.commit()
+
     book_id_map = {}
     for b in data.get("books", []):
         old_id = b.pop("id", None)
         b["series_id"] = series_id_map.get(b["series_id"], b["series_id"])
+        if b.get("sub_series_id") is not None:
+            b["sub_series_id"] = sub_series_id_map.get(b["sub_series_id"], b["sub_series_id"])
         clean = {k: v for k, v in b.items() if k not in ("created_at", "updated_at")}
         new_book = models.Book(**clean)
         db.add(new_book)
@@ -156,6 +177,7 @@ async def import_backup(
     return {
         "detail": "Backup restored successfully",
         "series_restored": len(series_id_map),
+        "sub_series_restored": len(sub_series_id_map),
         "books_restored": len(book_id_map),
         "magazines_restored": len(mag_id_map),
     }

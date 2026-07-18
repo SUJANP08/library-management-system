@@ -82,6 +82,34 @@ class Series(Base):
 
     books = relationship("Book", back_populates="series", cascade="all, delete-orphan")
     magazines = relationship("Magazine", back_populates="series", cascade="all, delete-orphan")
+    sub_series = relationship("SubSeries", back_populates="series", cascade="all, delete-orphan",
+                               order_by="SubSeries.name")
+
+
+class SubSeries(Base):
+    """
+    Sub-Series / Category nested under a Main Series, e.g.:
+      Series A (Kannada Story Books) -> Kadambari, Kathegalu, Jeevana Charitre...
+      Series B (Kannada Kavya & Nataka) -> Kavana, Nataka...
+    A given sub-series name is scoped to its parent series (the same name,
+    e.g. "Biography", can exist independently under multiple main series).
+    Librarians can add new sub-series on the fly while cataloguing a book.
+    """
+    __tablename__ = "sub_series"
+    __table_args__ = (
+        UniqueConstraint("series_id", "name", name="uq_series_subseries_name"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    series_id = Column(Integer, ForeignKey("series.id"), nullable=False)
+    name = Column(String(255), nullable=False)  # "Kadambari", "Kavana", "Biography"...
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    series = relationship("Series", back_populates="sub_series")
+    books = relationship("Book", back_populates="sub_series")
 
 
 class Book(Base):
@@ -97,6 +125,7 @@ class Book(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     series_id = Column(Integer, ForeignKey("series.id"), nullable=False)
+    sub_series_id = Column(Integer, ForeignKey("sub_series.id"), nullable=True)
     base_serial = Column(Integer, nullable=False)  # e.g. 74 -> "A-74"
 
     title = Column(String(500), nullable=False)
@@ -111,6 +140,7 @@ class Book(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     series = relationship("Series", back_populates="books")
+    sub_series = relationship("SubSeries", back_populates="books")
     copies = relationship("BookCopy", back_populates="book", cascade="all, delete-orphan",
                            order_by="BookCopy.copy_number")
 

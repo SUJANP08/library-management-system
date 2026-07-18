@@ -10,6 +10,7 @@ import TarangaPage from "./pages/TarangaPage";
 import SeriesPage from "./pages/SeriesPage";
 import ReportsPage from "./pages/ReportsPage";
 import SettingsPage from "./pages/SettingsPage";
+import CategoryFinderPage from "./pages/CategoryFinderPage";
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
             <Route path="books" element={<BooksPage />} />
             <Route path="taranga" element={<TarangaPage />} />
             <Route path="series" element={<SeriesPage />} />
+            <Route path="category-finder" element={<CategoryFinderPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>

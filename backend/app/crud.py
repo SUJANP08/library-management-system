@@ -4,6 +4,8 @@ Core business logic that isn't just simple CRUD passthrough:
 - Detecting existing (title, author) within a series and adding a new
   copy (A-74(2), A-74(3)...) instead of a duplicate base record.
 """
+from typing import Optional
+
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from fastapi import HTTPException
@@ -35,6 +37,37 @@ def find_existing_book(db: Session, series_id: int, title: str, author: str):
     return None
 
 
+def resolve_sub_series(db: Session, series_id: int, sub_series_id: Optional[int],
+                        sub_series_name: Optional[str]) -> Optional[int]:
+    """
+    Resolves the sub_series_id to store on a Book:
+    - If sub_series_id is given, validate it belongs to the series and return it.
+    - Else if sub_series_name is given, find-or-create a SubSeries with that name
+      under the series (case/whitespace-insensitive match) and return its id.
+    - Else return None (uncategorized sub-series - allowed, can be set later).
+    """
+    if sub_series_id:
+        sub = db.query(models.SubSeries).filter(
+            models.SubSeries.id == sub_series_id, models.SubSeries.series_id == series_id
+        ).first()
+        if not sub:
+            raise HTTPException(status_code=400, detail="Sub-series does not belong to the selected series")
+        return sub.id
+
+    if sub_series_name and sub_series_name.strip():
+        norm_name = normalize(sub_series_name)
+        existing = db.query(models.SubSeries).filter(models.SubSeries.series_id == series_id).all()
+        for s in existing:
+            if normalize(s.name) == norm_name:
+                return s.id
+        new_sub = models.SubSeries(series_id=series_id, name=sub_series_name.strip())
+        db.add(new_sub)
+        db.flush()
+        return new_sub.id
+
+    return None
+
+
 def create_book_or_add_copy(db: Session, payload: schemas.BookCreate) -> tuple[models.Book, bool]:
     """
     Adds a new book. If a book with the same title+author already exists in
@@ -49,9 +82,16 @@ def create_book_or_add_copy(db: Session, payload: schemas.BookCreate) -> tuple[m
     if not series.is_active:
         raise HTTPException(status_code=400, detail="Series is inactive")
 
+    sub_series_id = resolve_sub_series(db, payload.series_id, payload.sub_series_id, payload.sub_series_name)
+
     existing = find_existing_book(db, payload.series_id, payload.title, payload.author)
 
     if existing:
+        # If the existing record has no sub-series classification yet and this
+        # submission supplies one, backfill it rather than leaving it blank.
+        if sub_series_id and not existing.sub_series_id:
+            existing.sub_series_id = sub_series_id
+            db.add(existing)
         next_copy_number = (max([c.copy_number for c in existing.copies], default=0)) + 1
         copy = models.BookCopy(book_id=existing.id, copy_number=next_copy_number)
         db.add(copy)
@@ -63,6 +103,7 @@ def create_book_or_add_copy(db: Session, payload: schemas.BookCreate) -> tuple[m
     new_serial = series.next_serial
     book = models.Book(
         series_id=series.id,
+        sub_series_id=sub_series_id,
         base_serial=new_serial,
         title=payload.title,
         author=payload.author,
@@ -174,3 +215,181 @@ def renumber_series(db: Session, series_id: int):
     db.commit()
     db.refresh(series)
     return series
+
+
+# ---------------------------------------------------------------------------
+# Category Finder / Book Classification Assistant
+# ---------------------------------------------------------------------------
+import difflib  # noqa: E402  (kept near point of use for readability)
+
+
+def _title_similarity(norm_a: str, norm_b: str) -> float:
+    """Blends sequence similarity with word-overlap (Jaccard) so both close
+    misspellings and reordered/partial titles score well. Works script-agnostic
+    (Kannada, English, transliterations) since it only compares characters/tokens."""
+    if not norm_a or not norm_b:
+        return 0.0
+    seq_ratio = difflib.SequenceMatcher(None, norm_a, norm_b).ratio()
+    tokens_a, tokens_b = set(norm_a.split()), set(norm_b.split())
+    if tokens_a and tokens_b:
+        jaccard = len(tokens_a & tokens_b) / len(tokens_a | tokens_b)
+    else:
+        jaccard = 0.0
+    return max(seq_ratio, jaccard)
+
+
+def _book_to_exact_match_out(book: "models.Book") -> "schemas.ExactMatchOut":
+    return schemas.ExactMatchOut(
+        book_id=book.id,
+        display_serial=display_serial_for_book(book),
+        title=book.title,
+        author=book.author,
+        series_id=book.series_id,
+        series_code=book.series.code if book.series else "",
+        series_name=book.series.name if book.series else "",
+        sub_series_id=book.sub_series_id,
+        sub_series_name=book.sub_series.name if book.sub_series else None,
+    )
+
+
+def suggest_category(db: Session, title: str, author: Optional[str] = None) -> "schemas.CategorySuggestionResponse":
+    """
+    Core logic behind the Category Finder / Book Classification Assistant.
+
+    1. Looks for an exact (title[+author]) match already catalogued and, if
+       found, returns its current Main Series / Sub-Series immediately.
+    2. Otherwise, once the library has enough catalogued data (see
+       app.ml_classifier.MIN_BOOKS_TO_TRAIN), asks the trained ML model
+       (TF-IDF + K-Nearest-Neighbours + Nearest-Centroid, see ml_classifier.py)
+       for its best-guess Main Series / Sub-Series predictions. This works
+       even for a title that doesn't closely resemble anything already
+       catalogued, because Nearest-Centroid compares against each category's
+       overall theme, not just individual neighbours.
+    3. Before the library has enough data to train on, falls back to a
+       plain title-similarity heuristic instead.
+    4. In both cases, an author who already has other books catalogued adds
+       a confidence bonus - a very high-precision signal on its own.
+    5. If the best resulting confidence is still low, `recommend_new_category`
+       is set so the UI can suggest creating a brand-new Main Series /
+       Sub-Series instead of force-fitting an existing one.
+    The caller (Category Finder page / Add Book screen) always allows the
+    librarian to override any suggestion manually.
+    """
+    from sqlalchemy.orm import joinedload
+    from app import ml_classifier
+
+    norm_title = normalize(title)
+    norm_author = normalize(author) if author else None
+
+    all_books = (
+        db.query(models.Book)
+        .options(joinedload(models.Book.series), joinedload(models.Book.sub_series))
+        .all()
+    )
+
+    exact = None
+    for b in all_books:
+        if normalize(b.title) == norm_title and (not norm_author or normalize(b.author) == norm_author):
+            exact = b
+            break
+
+    if exact:
+        return schemas.CategorySuggestionResponse(
+            exact_match=_book_to_exact_match_out(exact),
+            suggestions=[],
+            similar_titles=[],
+            ml_active=ml_classifier.get_model(db) is not None,
+            trained_on_books=len(all_books),
+            recommend_new_category=False,
+        )
+
+    # Author match is a strong, independent, easily-explained signal
+    # regardless of whether the ML model is active - tally it separately.
+    author_scores: dict[tuple[int, Optional[int]], int] = {}
+    if norm_author:
+        for b in all_books:
+            if normalize(b.author) == norm_author:
+                key = (b.series_id, b.sub_series_id)
+                author_scores[key] = author_scores.get(key, 0) + 1
+
+    suggestions_map: dict[tuple[int, Optional[int]], dict] = {}
+    similar_titles_out: list[schemas.ExactMatchOut] = []
+
+    model = ml_classifier.get_model(db)
+    if model is not None:
+        for p in ml_classifier.predict(model, title, author):
+            key = (p.series_id, p.sub_series_id)
+            suggestions_map[key] = {
+                "confidence": p.confidence,
+                "reasons": ["Predicted by the ML model trained on your library's own catalog"],
+            }
+        book_by_id = {b.id: b for b in all_books}
+        for book_id, _sim in ml_classifier.similar_books(model, title, author, top_n=5):
+            b = book_by_id.get(book_id)
+            if b:
+                similar_titles_out.append(_book_to_exact_match_out(b))
+    else:
+        # Not enough catalogued data yet to train the ML model - fall back
+        # to a plain title-similarity heuristic so the assistant still helps.
+        similar_scored: list[tuple[float, models.Book]] = []
+        title_scores: dict[tuple[int, Optional[int]], float] = {}
+        for b in all_books:
+            sim = _title_similarity(norm_title, normalize(b.title))
+            if sim >= 0.72:
+                key = (b.series_id, b.sub_series_id)
+                title_scores[key] = title_scores.get(key, 0.0) + sim
+                similar_scored.append((sim, b))
+        similar_scored.sort(key=lambda x: -x[0])
+        similar_titles_out = [_book_to_exact_match_out(b) for _, b in similar_scored[:5]]
+        if title_scores:
+            max_score = max(title_scores.values()) or 1.0
+            for key, score in title_scores.items():
+                confidence = round(min(0.85, 0.3 + 0.55 * (score / max_score)), 2)
+                suggestions_map[key] = {
+                    "confidence": confidence,
+                    "reasons": ["similar existing title(s) found in this category"],
+                }
+
+    # Fold the author-match bonus into whichever signal produced candidates
+    # above (or introduce the author's usual category as its own candidate
+    # if neither the ML model nor title similarity surfaced it).
+    for key, count in author_scores.items():
+        bonus = min(0.3, 0.12 * count)
+        entry = suggestions_map.get(key)
+        if entry:
+            entry["confidence"] = round(min(0.98, entry["confidence"] + bonus), 2)
+            entry["reasons"].append(f"{count} existing book(s) by this author already classified here")
+        else:
+            suggestions_map[key] = {
+                "confidence": round(min(0.9, 0.4 + bonus), 2),
+                "reasons": [f"{count} existing book(s) by this author already classified here"],
+            }
+
+    ranked = sorted(suggestions_map.items(), key=lambda kv: -kv[1]["confidence"])[:5]
+    suggestions: list[schemas.CategorySuggestionOut] = []
+    for (series_id, sub_series_id), info in ranked:
+        series = db.get(models.Series, series_id)
+        if not series:
+            continue
+        sub = db.get(models.SubSeries, sub_series_id) if sub_series_id else None
+        suggestions.append(schemas.CategorySuggestionOut(
+            series_id=series.id, series_code=series.code, series_name=series.name,
+            sub_series_id=sub.id if sub else None, sub_series_name=sub.name if sub else None,
+            confidence=info["confidence"],
+            reason="; ".join(info["reasons"]),
+        ))
+
+    best_confidence = suggestions[0].confidence if suggestions else 0.0
+    # Nothing catalogued closely resembles this title/author: rather than
+    # force-fitting a weak guess, tell the librarian a new Main Series or
+    # Sub-Series is probably the better call.
+    recommend_new_category = best_confidence < 0.3
+
+    return schemas.CategorySuggestionResponse(
+        exact_match=None,
+        suggestions=suggestions,
+        similar_titles=similar_titles_out,
+        ml_active=model is not None,
+        trained_on_books=len(all_books),
+        recommend_new_category=recommend_new_category,
+    )

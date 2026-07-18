@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
+import { IconCheckCircle, IconAlertTriangle } from "./Icons";
 
 export interface ToastMessage {
   id: number;
@@ -27,11 +28,11 @@ export function ToastContainer({ toasts }: { toasts: ToastMessage[] }) {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className={`rounded-xl shadow-lg px-4 py-3 text-sm font-medium text-white flex items-center gap-2 ${
-            t.type === "success" ? "bg-gray-900" : "bg-red-600"
+          className={`rounded-xl shadow-popover px-4 py-3 text-sm font-medium text-white flex items-center gap-2.5 animate-slide-up ${
+            t.type === "success" ? "bg-brand-900" : "bg-red-600"
           }`}
         >
-          <span>{t.type === "success" ? "✅" : "⚠️"}</span>
+          {t.type === "success" ? <IconCheckCircle className="w-4 h-4 shrink-0" /> : <IconAlertTriangle className="w-4 h-4 shrink-0" />}
           <span className="flex-1">{t.text}</span>
         </div>
       ))}

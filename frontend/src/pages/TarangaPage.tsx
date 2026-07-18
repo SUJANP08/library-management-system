@@ -5,6 +5,7 @@ import type { Magazine, Series } from "../types";
 import { useAuth } from "../context/AuthContext";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useToast, ToastContainer } from "../components/Toast";
+import { IconPlus, IconSearch, IconNewspaper, IconEdit, IconTrash, IconX } from "../components/Icons";
 
 const emptyForm = { series_id: "", title: "", month: "" };
 
@@ -102,67 +103,85 @@ export default function TarangaPage() {
     <div className="space-y-5">
       <ToastContainer toasts={toasts} />
 
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-900">Taranga</h2>
-        <button onClick={openCreate} className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg shadow-sm transition-colors">
-          + Add Taranga
+      <div className="page-header">
+        <div>
+          <h2 className="page-title">Taranga</h2>
+          <p className="page-subtitle">{entries.length} entr{entries.length === 1 ? "y" : "ies"}</p>
+        </div>
+        <button onClick={openCreate} className="btn-primary">
+          <IconPlus className="w-4 h-4" /> Add Taranga
         </button>
       </div>
 
-      <input
-        className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-white shadow-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-        placeholder="Search Taranga title"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        lang="kn"
-      />
+      <div className="card card-pad">
+        <div className="relative">
+          <IconSearch className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            className="input-field pl-10"
+            placeholder="Search Taranga title"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            lang="kn"
+          />
+        </div>
+      </div>
 
       {loading ? (
-        <div className="text-center py-14 text-gray-400 text-sm">Loading...</div>
+        <div className="empty-state">Loading...</div>
       ) : (
         <div className="space-y-2.5">
           {entries.map((m) => (
-            <div key={m.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow">
+            <div key={m.id} className="card card-hover card-pad">
               <div className="flex justify-between items-start gap-2">
                 <div className="min-w-0">
-                  <span className="font-mono font-bold text-brand-700 bg-brand-50 px-2 py-0.5 rounded text-xs">
-                    {m.display_serial}
-                  </span>
-                  <h3 className="font-semibold text-gray-900 mt-1.5 truncate">{m.title}</h3>
-                  {m.month && <p className="text-sm text-gray-500">{m.month}</p>}
+                  <span className="serial-chip">{m.display_serial}</span>
+                  <h3 className="font-semibold text-stone-900 mt-1.5 truncate">{m.title}</h3>
+                  {m.month && <p className="text-sm text-stone-500">{m.month}</p>}
                 </div>
                 <div className="flex gap-3 text-xs shrink-0">
-                  <button onClick={() => openEdit(m)} className="text-gray-600 font-medium">Edit</button>
+                  <button onClick={() => openEdit(m)} className="text-stone-600 font-semibold flex items-center gap-1">
+                    <IconEdit className="w-3.5 h-3.5" /> Edit
+                  </button>
                   {isAdmin && (
-                    <button onClick={() => setDeleteTarget(m)} className="text-red-600 font-medium">Delete</button>
+                    <button onClick={() => setDeleteTarget(m)} className="text-red-600 font-semibold flex items-center gap-1">
+                      <IconTrash className="w-3.5 h-3.5" /> Delete
+                    </button>
                   )}
                 </div>
               </div>
             </div>
           ))}
           {entries.length === 0 && (
-            <p className="text-center text-sm text-gray-400 py-14">No Taranga entries yet. Tap "+ Add Taranga" to add one.</p>
+            <div className="empty-state">
+              <IconNewspaper className="w-8 h-8 text-stone-300" />
+              No Taranga entries yet. Tap "Add Taranga" to add one.
+            </div>
           )}
         </div>
       )}
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-30 p-0 sm:p-4">
-          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md p-6 space-y-4">
-            <div>
-              <h3 className="font-semibold text-gray-900 text-lg">{editing ? "Edit Taranga" : "Add Taranga"}</h3>
-              {!editing && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Just Title and Month — the serial number is assigned automatically.
-                </p>
-              )}
+        <div className="modal-overlay">
+          <div className="modal-panel p-6 space-y-4">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h3 className="font-bold text-stone-900 text-lg">{editing ? "Edit Taranga" : "Add Taranga"}</h3>
+                {!editing && (
+                  <p className="text-xs text-stone-500 mt-1">
+                    Just Title and Month — the serial number is assigned automatically.
+                  </p>
+                )}
+              </div>
+              <button type="button" onClick={() => setShowForm(false)} className="icon-btn shrink-0">
+                <IconX className="w-4 h-4" />
+              </button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
               {!editing && (
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Series</label>
+                  <label className="field-label">Series</label>
                   <select
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 bg-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                    className="select-field"
                     value={form.series_id}
                     onChange={(e) => setForm({ ...form, series_id: e.target.value })}
                     required
@@ -172,10 +191,10 @@ export default function TarangaPage() {
                 </div>
               )}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">Title</label>
+                <label className="field-label">Title</label>
                 <input
                   autoFocus
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                  className="input-field"
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                   lang="kn"
@@ -183,9 +202,9 @@ export default function TarangaPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">Month</label>
+                <label className="field-label">Month</label>
                 <input
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                  className="input-field"
                   value={form.month}
                   onChange={(e) => setForm({ ...form, month: e.target.value })}
                   placeholder="e.g. July 2026"
@@ -196,10 +215,10 @@ export default function TarangaPage() {
               {error && <p className="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2">{error}</p>}
 
               <div className="flex gap-2 pt-2">
-                <button type="button" onClick={() => setShowForm(false)} className="flex-1 border border-gray-300 rounded-lg py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                <button type="button" onClick={() => setShowForm(false)} className="btn-secondary flex-1">
                   Cancel
                 </button>
-                <button type="submit" disabled={saving} className="flex-1 bg-brand-600 hover:bg-brand-700 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-60">
+                <button type="submit" disabled={saving} className="btn-primary flex-1">
                   {saving ? "Saving..." : "Save"}
                 </button>
               </div>

@@ -13,6 +13,7 @@ from app import models, auth
 from app.routers import (
     auth_router, series_router, books_router, magazines_router,
     reports_router, backup_router, dashboard_router,
+    sub_series_router, category_finder_router,
 )
 
 # Create all tables if they don't exist yet (for simple deployments).
@@ -60,6 +61,29 @@ def bootstrap_default_series():
         db.close()
 
 
+def bootstrap_default_sub_series():
+    """Seed a starter set of Sub-Series/Categories under each existing BOOK
+    series, only if that series has none yet. Admins can add/edit/delete
+    these freely afterwards in Series Management."""
+    db = SessionLocal()
+    try:
+        default_categories = [
+            "Kadambari", "Kavana", "Kruti", "Kathegalu", "Biography",
+            "Nataka", "Prabandha", "Reference",
+        ]
+        book_series = db.query(models.Series).filter(models.Series.material_type == models.MaterialType.BOOK).all()
+        for series in book_series:
+            if db.query(models.SubSeries).filter(models.SubSeries.series_id == series.id).count() == 0:
+                for name in default_categories:
+                    db.add(models.SubSeries(series_id=series.id, name=name))
+        db.commit()
+        if book_series:
+            print("[bootstrap] Seeded default Sub-Series/Categories (Kadambari, Kavana, Kruti, Kathegalu, "
+                  "Biography, ...) under existing book series. Edit/delete anytime in Series Management.")
+    finally:
+        db.close()
+
+
 app = FastAPI(
     title="Library Management System API",
     description="Central API for books, magazines, series management, reports, and backups.",
@@ -76,17 +100,20 @@ app.add_middleware(
 
 app.include_router(auth_router.router)
 app.include_router(series_router.router)
+app.include_router(sub_series_router.router)
 app.include_router(books_router.router)
 app.include_router(magazines_router.router)
 app.include_router(reports_router.router)
 app.include_router(backup_router.router)
 app.include_router(dashboard_router.router)
+app.include_router(category_finder_router.router)
 
 
 @app.on_event("startup")
 def on_startup():
     bootstrap_admin()
     bootstrap_default_series()
+    bootstrap_default_sub_series()
 
 
 @app.get("/")

@@ -1,13 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { api, downloadBlob } from "../api/client";
-import type { BookOrderBy, Series } from "../types";
+import type { BookOrderBy, Series, SubSeries } from "../types";
 import { useAuth } from "../context/AuthContext";
 import OrderModeToggle from "../components/OrderModeToggle";
+import { IconReport, IconDownload, IconUpload } from "../components/Icons";
 
 export default function ReportsPage() {
   const { isAdmin } = useAuth();
   const [series, setSeries] = useState<Series[]>([]);
+  const [subSeriesOptions, setSubSeriesOptions] = useState<SubSeries[]>([]);
   const [seriesId, setSeriesId] = useState("");
+  const [subSeriesId, setSubSeriesId] = useState("");
   const [authorFilter, setAuthorFilter] = useState("");
   const [orderBy, setOrderBy] = useState<BookOrderBy>("series");
   const [generating, setGenerating] = useState<"pdf" | "excel" | null>(null);
@@ -21,11 +24,21 @@ export default function ReportsPage() {
     api.get("/series").then((res) => setSeries(res.data));
   }, []);
 
+  useEffect(() => {
+    if (!seriesId) { setSubSeriesOptions([]); setSubSeriesId(""); return; }
+    api.get("/sub-series", { params: { series_id: seriesId } }).then((res) => setSubSeriesOptions(res.data));
+  }, [seriesId]);
+
   async function handleExport(format: "pdf" | "excel") {
     setGenerating(format);
     try {
       const res = await api.get(`/reports/books/${format}`, {
-        params: { series_id: seriesId || undefined, author: authorFilter || undefined, order_by: orderBy },
+        params: {
+          series_id: seriesId || undefined,
+          sub_series_id: subSeriesId || undefined,
+          author: authorFilter || undefined,
+          order_by: orderBy,
+        },
         responseType: "blob",
       });
       const ext = format === "pdf" ? "pdf" : "xlsx";
@@ -59,20 +72,40 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-bold text-gray-900">Reports</h2>
+      <div>
+        <h2 className="page-title flex items-center gap-2.5">
+          <span className="w-9 h-9 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center">
+            <IconReport className="w-5 h-5" />
+          </span>
+          Reports
+        </h2>
+        <p className="page-subtitle">Export printable catalogues or bulk-import books from Excel.</p>
+      </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
-        <h3 className="font-semibold text-gray-700 text-sm">Generate Printable Report</h3>
-        <p className="text-xs text-gray-500">
-          Includes Serial Number, Book Title, Author, and Category for the selected series (or all series).
-        </p>
-        <div className="grid sm:grid-cols-2 gap-3">
-          <select className="border border-gray-300 rounded-lg px-3 py-2.5" value={seriesId} onChange={(e) => setSeriesId(e.target.value)}>
-            <option value="">All Series</option>
+      <div className="card card-pad space-y-4">
+        <div>
+          <h3 className="section-title">Generate Printable Report</h3>
+          <p className="text-xs text-stone-500 mt-1">
+            Includes Serial Number, Book Title, Author, Main Series, and Sub-Series / Category for the selected
+            scope (or the entire library).
+          </p>
+        </div>
+        <div className="grid sm:grid-cols-3 gap-3">
+          <select className="select-field" value={seriesId} onChange={(e) => { setSeriesId(e.target.value); setSubSeriesId(""); }}>
+            <option value="">All Main Series</option>
             {series.map((s) => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
           </select>
+          <select
+            className="select-field disabled:opacity-50 disabled:cursor-not-allowed"
+            value={subSeriesId}
+            onChange={(e) => setSubSeriesId(e.target.value)}
+            disabled={!seriesId}
+          >
+            <option value="">{seriesId ? "All Sub-Series" : "Select a Main Series first"}</option>
+            {subSeriesOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
           <input
-            className="border border-gray-300 rounded-lg px-3 py-2.5"
+            className="input-field"
             placeholder="Filter by author (optional)"
             value={authorFilter}
             onChange={(e) => setAuthorFilter(e.target.value)}
@@ -81,8 +114,8 @@ export default function ReportsPage() {
         </div>
         <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
           <div>
-            <p className="text-xs font-medium text-gray-600">Row order</p>
-            <p className="text-[11px] text-gray-400">
+            <p className="text-xs font-semibold text-stone-600">Row order</p>
+            <p className="text-[11px] text-stone-400">
               {orderBy === "series"
                 ? "Grouped by serial number (e.g. A-12, A-12(2), A-13)."
                 : "Newest copies first, so recently added books are easy to spot."}
@@ -94,46 +127,49 @@ export default function ReportsPage() {
           <button
             onClick={() => handleExport("pdf")}
             disabled={generating !== null}
-            className="flex-1 bg-red-600 hover:bg-red-700 text-white text-sm font-medium py-2.5 rounded-lg disabled:opacity-60"
+            className="btn-danger flex-1"
           >
-            {generating === "pdf" ? "Generating..." : "📄 Download PDF"}
+            <IconDownload className="w-4 h-4" /> {generating === "pdf" ? "Generating..." : "Download PDF"}
           </button>
           <button
             onClick={() => handleExport("excel")}
             disabled={generating !== null}
-            className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-2.5 rounded-lg disabled:opacity-60"
+            className="btn flex-1 bg-emerald-600 text-white shadow-soft hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-300"
           >
-            {generating === "excel" ? "Generating..." : "📊 Download Excel"}
+            <IconDownload className="w-4 h-4" /> {generating === "excel" ? "Generating..." : "Download Excel"}
           </button>
         </div>
       </div>
 
       {isAdmin && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
-          <h3 className="font-semibold text-gray-700 text-sm">Bulk Import from Excel</h3>
-          <p className="text-xs text-gray-500">
-            Upload an .xlsx file with columns: Title, Author, Language, Publisher, Year, ISBN, Notes.
-            Duplicate title+author pairs are automatically added as additional copies.
-          </p>
+        <div className="card card-pad space-y-4">
+          <div>
+            <h3 className="section-title">Bulk Import from Excel</h3>
+            <p className="text-xs text-stone-500 mt-1">
+              Upload an .xlsx file with columns: Title, Author, Language, Publisher, Year, ISBN, Notes,
+              Sub Series (optional — matched or created automatically). Duplicate title+author pairs are
+              automatically added as additional copies.
+            </p>
+          </div>
           <form onSubmit={handleImport} className="space-y-3">
-            <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5" value={importSeriesId}
+            <select className="select-field" value={importSeriesId}
                     onChange={(e) => setImportSeriesId(e.target.value)} required>
-              <option value="">Select target series...</option>
+              <option value="">Select target Main Series...</option>
               {series.map((s) => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
             </select>
             <input
               type="file"
               accept=".xlsx"
               onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-              className="w-full text-sm"
+              className="w-full text-sm text-stone-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-brand-50 file:text-brand-700 file:text-xs file:font-semibold hover:file:bg-brand-100"
               required
             />
-            <button type="submit" disabled={importing} className="w-full bg-brand-600 text-white text-sm font-medium py-2.5 rounded-lg disabled:opacity-60">
-              {importing ? "Importing..." : "Import"}
+            <button type="submit" disabled={importing} className="btn-primary w-full">
+              <IconUpload className="w-4 h-4" /> {importing ? "Importing..." : "Import"}
             </button>
           </form>
           {importResult && (
-            <div className="text-xs bg-gray-50 rounded-lg p-3 space-y-1">
+            <div className="text-xs bg-stone-50 rounded-lg p-3 space-y-1">
               {importResult.new_books_created !== undefined && (
                 <>
                   <p>✅ New books created: {importResult.new_books_created}</p>

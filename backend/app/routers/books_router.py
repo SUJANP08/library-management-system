@@ -26,6 +26,7 @@ def _book_to_out(book: models.Book, order_by: str = "series") -> schemas.BookOut
     out = schemas.BookOut.model_validate(book)
     out.series_code = book.series.code
     out.series_name = book.series.name
+    out.sub_series_name = book.sub_series.name if book.sub_series else None
     out.total_copies = len(book.copies)
     out.display_serial = f"{book.series.code}-{book.base_serial}"
     copies = list(book.copies)
@@ -48,6 +49,7 @@ def list_books(
     search: Optional[str] = Query(None, description="Search title, author, or serial (e.g. 'A-74')"),
     series_id: Optional[int] = None,
     series_code: Optional[str] = None,
+    sub_series_id: Optional[int] = None,
     author: Optional[str] = None,
     language: Optional[str] = None,
     order_by: str = Query(
@@ -63,12 +65,16 @@ def list_books(
     db: Session = Depends(get_db),
     _user: models.User = Depends(auth.get_current_user),
 ):
-    q = db.query(models.Book).options(joinedload(models.Book.series), joinedload(models.Book.copies))
+    q = db.query(models.Book).options(
+        joinedload(models.Book.series), joinedload(models.Book.sub_series), joinedload(models.Book.copies)
+    )
 
     if series_id:
         q = q.filter(models.Book.series_id == series_id)
     if series_code:
         q = q.join(models.Series).filter(models.Series.code == series_code.upper())
+    if sub_series_id:
+        q = q.filter(models.Book.sub_series_id == sub_series_id)
     if author:
         q = q.filter(models.Book.author.ilike(f"%{author}%"))
     if language:
@@ -84,8 +90,9 @@ def list_books(
                 serial_filter = (
                     func.upper(models.Series.code) == code_part.strip().upper()
                 ) & (models.Book.base_serial == int(num_part))
-        q = q.join(models.Series)
-        conditions = [models.Book.title.ilike(like), models.Book.author.ilike(like)]
+        q = q.join(models.Series).outerjoin(models.SubSeries)
+        conditions = [models.Book.title.ilike(like), models.Book.author.ilike(like),
+                      models.SubSeries.name.ilike(like)]
         if serial_filter is not None:
             conditions.append(serial_filter)
         q = q.filter(or_(*conditions))
@@ -114,8 +121,9 @@ def list_books(
 @router.get("/{book_id}", response_model=schemas.BookOut)
 def get_book(book_id: int, db: Session = Depends(get_db),
              _user: models.User = Depends(auth.get_current_user)):
-    book = db.query(models.Book).options(joinedload(models.Book.series), joinedload(models.Book.copies)) \
-        .filter(models.Book.id == book_id).first()
+    book = db.query(models.Book).options(
+        joinedload(models.Book.series), joinedload(models.Book.sub_series), joinedload(models.Book.copies)
+    ).filter(models.Book.id == book_id).first()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
     return _book_to_out(book)
@@ -148,7 +156,12 @@ def update_book(book_id: int, payload: schemas.BookUpdate, db: Session = Depends
     book = db.query(models.Book).filter(models.Book.id == book_id).first()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    sub_series_name = data.pop("sub_series_name", None)
+    if "sub_series_id" in data or sub_series_name:
+        resolved = crud.resolve_sub_series(db, book.series_id, data.pop("sub_series_id", None), sub_series_name)
+        book.sub_series_id = resolved
+    for k, v in data.items():
         setattr(book, k, v)
     db.commit()
     db.refresh(book)

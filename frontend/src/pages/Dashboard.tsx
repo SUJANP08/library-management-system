@@ -2,84 +2,179 @@ import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { DashboardStats } from "../types";
+import { useAuth } from "../context/AuthContext";
+import { IconBook, IconNewspaper, IconReport, IconWand, IconArrowRight, IconLayers, IconFolder, IconSparkle } from "../components/Icons";
 
 const quickActions = [
-  { to: "/books?action=add", label: "Add Book", icon: "📖", color: "bg-brand-600 hover:bg-brand-700" },
-  { to: "/taranga?action=add", label: "Add Taranga", icon: "📰", color: "bg-emerald-600 hover:bg-emerald-700" },
-  { to: "/reports", label: "Generate Report", icon: "📄", color: "bg-gray-800 hover:bg-gray-900" },
+  { to: "/books?action=add", label: "Add Book", sub: "Add book to catalog", Icon: IconBook, gradient: "from-blue-500 to-indigo-600" },
+  { to: "/taranga?action=add", label: "Add Taranga", sub: "Register a new issue", Icon: IconNewspaper, gradient: "from-emerald-500 to-teal-600" },
+  { to: "/category-finder", label: "Category Finder", sub: "Classify a new title", Icon: IconWand, gradient: "from-accent-400 to-accent-600" },
+  { to: "/reports", label: "Generate Report", sub: "Export catalog data", Icon: IconReport, gradient: "from-brand-400 to-brand-600" },
 ];
+
+function StatSkeleton() {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="card card-pad h-28 space-y-3">
+          <div className="skeleton w-9 h-9 rounded-lg" />
+          <div className="skeleton w-16 h-3 rounded" />
+          <div className="skeleton w-10 h-5 rounded" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | false>(false);
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   useEffect(() => {
-    api.get("/dashboard/stats").then((res) => setStats(res.data)).finally(() => setLoading(false));
+    api.get("/dashboard/stats")
+      .then((res) => setStats(res.data))
+      .catch((err) => {
+        const detail = err?.response?.data?.detail;
+        const status = err?.response?.status;
+        setError(
+          detail ? String(detail)
+          : status ? `Server error (${status}). Please try again.`
+          : "Could not reach the server. Check your connection or that the backend is running."
+        );
+      })
+      .finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return <div className="text-center py-16 text-gray-400 text-sm">Loading dashboard...</div>;
+  const hour = new Date().getHours();
+  const timeGreeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+
+  if (error) {
+    return (
+      <div className="empty-state text-red-500">
+        <IconSparkle className="w-7 h-7 text-red-300" />
+        {error}
+      </div>
+    );
   }
-  if (!stats) {
-    return <div className="text-center py-16 text-red-500 text-sm">Could not load dashboard.</div>;
-  }
+
+  const statCards = stats
+    ? [
+        { label: "Total Books", value: stats.total_books, sub: `+${stats.added_this_month} this month`, Icon: IconBook, gradient: "from-blue-500 to-indigo-600" },
+        { label: "Main Series", value: stats.total_series, sub: "Categories catalogued", Icon: IconLayers, gradient: "from-emerald-500 to-teal-600" },
+        { label: "Sub-Series", value: stats.total_sub_series, sub: "Nested classifications", Icon: IconFolder, gradient: "from-accent-400 to-accent-600" },
+        { label: "Taranga Titles", value: stats.total_taranga, sub: "Magazines tracked", Icon: IconNewspaper, gradient: "from-brand-400 to-brand-600" },
+      ]
+    : [];
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
-        <p className="text-sm text-gray-500 mt-0.5">Welcome back — here's what's in your library.</p>
+    <div className="space-y-6">
+      {/* Hero */}
+      <div className="relative overflow-hidden rounded-3xl bg-ink-900 px-6 sm:px-9 py-9 sm:py-11 animate-rise">
+        <div className="pointer-events-none absolute inset-0 bg-mesh-hero opacity-80" />
+        <div className="pointer-events-none absolute inset-0 bg-grain mix-blend-overlay" />
+        <div className="pointer-events-none absolute -top-20 -right-16 w-64 h-64 rounded-full bg-accent-400/25 blur-3xl animate-float-slow" />
+        <div className="relative">
+          <p className="text-cream-200/60 text-xs font-semibold uppercase tracking-[0.14em]">
+            {new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+          </p>
+          <h2 className="font-display text-2xl sm:text-[32px] font-semibold text-white mt-2 tracking-tight flex items-center gap-2 flex-wrap">
+            {timeGreeting}, {user?.username || "Admin"} <span>👋</span>
+          </h2>
+          <p className="text-cream-200/70 text-sm mt-2 max-w-md">
+            Here's what's happening across the library today.
+          </p>
+        </div>
       </div>
 
-      {/* Total Books - the single focal stat */}
-      <div className="bg-gradient-to-br from-brand-700 to-brand-600 rounded-2xl shadow-md p-6 text-white flex items-center justify-between">
-        <div>
-          <p className="text-brand-100 text-sm font-medium">Total Books</p>
-          <p className="text-4xl font-bold mt-1">{stats.total_books}</p>
+      {/* Stat cards */}
+      {loading ? (
+        <StatSkeleton />
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+          {statCards.map((s, i) => (
+            <div
+              key={s.label}
+              className="card card-hover card-pad group animate-rise"
+              style={{ animationDelay: `${i * 60}ms` }}
+            >
+              <div className={`stat-icon bg-gradient-to-br ${s.gradient} text-white group-hover:scale-105 transition-transform duration-300`}>
+                <s.Icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
+              </div>
+              <p className="text-xs text-stone-500 mt-3.5">{s.label}</p>
+              <p className="text-[26px] font-display font-semibold text-stone-900 mt-0.5 tracking-tight">{s.value}</p>
+              <p className="text-[11px] text-stone-400 mt-0.5">{s.sub}</p>
+            </div>
+          ))}
         </div>
-        <div className="text-5xl opacity-80">📚</div>
-      </div>
+      )}
 
       {/* Quick Actions */}
-      <div>
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Quick Actions</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="card card-pad">
+        <h3 className="section-title mb-3.5">Quick Actions</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {quickActions.map((action) => (
             <button
               key={action.label}
               onClick={() => navigate(action.to)}
-              className={`${action.color} text-white rounded-xl px-4 py-4 flex items-center gap-3 shadow-sm transition-colors text-left`}
+              className="group text-left bg-white border border-stone-100 hover:border-transparent rounded-2xl px-3.5 py-4 flex flex-col gap-3 transition-all duration-250 ease-out active:scale-[0.97] hover:shadow-cardHover hover:-translate-y-0.5"
             >
-              <span className="text-2xl">{action.icon}</span>
-              <span className="font-semibold text-sm">{action.label}</span>
+              <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-soft bg-gradient-to-br ${action.gradient} group-hover:scale-110 transition-transform duration-300`}>
+                <action.Icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
+              </span>
+              <span>
+                <span className="block font-semibold text-[13px] text-stone-800 leading-tight">{action.label}</span>
+                <span className="block text-[11px] text-stone-400 mt-1 leading-tight">{action.sub}</span>
+              </span>
             </button>
           ))}
         </div>
       </div>
 
       {/* Recently Added Books */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-gray-800 text-sm">Recently Added Books</h3>
-          <Link to="/books" className="text-xs text-brand-600 font-medium hover:underline">View all →</Link>
+      <div className="card card-pad">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="section-title">Recently Added Books</h3>
+          <Link to="/books" className="text-xs text-brand-600 font-semibold hover:underline flex items-center gap-1">
+            View all <IconArrowRight className="w-3 h-3" />
+          </Link>
         </div>
-        <div className="divide-y divide-gray-100">
-          {stats.recent_additions.map((b) => (
-            <div key={b.id} className="py-3 flex justify-between items-center gap-3">
-              <div className="min-w-0">
-                <div className="font-medium text-gray-900 truncate">{b.title}</div>
-                <div className="text-xs text-gray-400 mt-0.5">{b.author}</div>
+        {loading ? (
+          <div className="space-y-3 py-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex justify-between items-center gap-3">
+                <div className="space-y-2 flex-1">
+                  <div className="skeleton h-3.5 w-1/2 rounded" />
+                  <div className="skeleton h-3 w-1/3 rounded" />
+                </div>
+                <div className="skeleton h-5 w-12 rounded" />
               </div>
-              <span className="text-xs font-mono bg-brand-50 text-brand-700 px-2.5 py-1 rounded-full shrink-0">
-                {b.display_serial}
-              </span>
-            </div>
-          ))}
-          {stats.recent_additions.length === 0 && (
-            <p className="text-sm text-gray-400 py-6 text-center">No books added yet. Tap "Add Book" to get started.</p>
-          )}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="divide-y divide-stone-100">
+            {stats?.recent_additions.map((b) => (
+              <div key={b.id} className="py-3 flex justify-between items-center gap-3 hover:bg-brand-50/30 -mx-2 px-2 rounded-lg transition-colors duration-150">
+                <div className="min-w-0">
+                  <div className="font-medium text-stone-900 truncate">{b.title}</div>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-xs text-stone-400">{b.author}</span>
+                    {b.sub_series_name && <span className="badge-accent">{b.sub_series_name}</span>}
+                  </div>
+                </div>
+                <span className="serial-chip shrink-0">{b.display_serial}</span>
+              </div>
+            ))}
+            {stats?.recent_additions.length === 0 && (
+              <div className="empty-state py-8">
+                <IconSparkle className="w-7 h-7 text-stone-300" />
+                No books added yet. Tap "Add Book" to get started.
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
