@@ -27,7 +27,7 @@ def generate_books_excel(rows: list[dict], title: str = "Library Report", order_
     thin = Side(style="thin", color="CCCCCC")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-    ws.merge_cells("A1:E1")
+    ws.merge_cells("A1:D1")
     ws["A1"] = title
     ws["A1"].font = title_font
 
@@ -35,11 +35,11 @@ def generate_books_excel(rows: list[dict], title: str = "Library Report", order_
     if order_label:
         meta_text += f" | View: {order_label}"
 
-    ws.merge_cells("A2:E2")
+    ws.merge_cells("A2:D2")
     ws["A2"] = meta_text
     ws["A2"].font = Font(italic=True, size=9, color="666666")
 
-    headers = ["Serial Number", "Book Title", "Author", "Main Series", "Sub-Series / Category"]
+    headers = ["Serial Number", "Book Title", "Author", "Sub-Series / Category"]
     header_row = 4
     for col_idx, header in enumerate(headers, start=1):
         cell = ws.cell(row=header_row, column=col_idx, value=header)
@@ -51,7 +51,7 @@ def generate_books_excel(rows: list[dict], title: str = "Library Report", order_
     for row_idx, r in enumerate(rows, start=header_row + 1):
         values = [
             r.get("serial", ""), r.get("title", ""), r.get("author", ""),
-            r.get("category", ""), r.get("sub_category", "—"),
+            r.get("sub_category", "—"),
         ]
         for col_idx, val in enumerate(values, start=1):
             cell = ws.cell(row=row_idx, column=col_idx, value=val)
@@ -62,7 +62,7 @@ def generate_books_excel(rows: list[dict], title: str = "Library Report", order_
                 ws.cell(row=row_idx, column=col_idx).fill = PatternFill(
                     start_color="F4F6F8", end_color="F4F6F8", fill_type="solid")
 
-    widths = [16, 46, 28, 24, 24]
+    widths = [16, 46, 28, 28]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
 

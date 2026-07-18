@@ -13,7 +13,7 @@ export default function ReportsPage() {
   const [subSeriesId, setSubSeriesId] = useState("");
   const [authorFilter, setAuthorFilter] = useState("");
   const [orderBy, setOrderBy] = useState<BookOrderBy>("series");
-  const [generating, setGenerating] = useState<"pdf" | "excel" | null>(null);
+  const [generating, setGenerating] = useState<"excel" | null>(null);
 
   const [importSeriesId, setImportSeriesId] = useState("");
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -29,10 +29,10 @@ export default function ReportsPage() {
     api.get("/sub-series", { params: { series_id: seriesId } }).then((res) => setSubSeriesOptions(res.data));
   }, [seriesId]);
 
-  async function handleExport(format: "pdf" | "excel") {
-    setGenerating(format);
+  async function handleExport() {
+    setGenerating("excel");
     try {
-      const res = await api.get(`/reports/books/${format}`, {
+      const res = await api.get(`/reports/books/excel`, {
         params: {
           series_id: seriesId || undefined,
           sub_series_id: subSeriesId || undefined,
@@ -41,10 +41,9 @@ export default function ReportsPage() {
         },
         responseType: "blob",
       });
-      const ext = format === "pdf" ? "pdf" : "xlsx";
       const seriesLabel = series.find((s) => s.id.toString() === seriesId)?.code || "All";
       const orderSuffix = orderBy === "latest" ? "_LatestAdded" : "";
-      downloadBlob(res.data, `Library_Report_${seriesLabel}${orderSuffix}.${ext}`);
+      downloadBlob(res.data, `Library_Report_${seriesLabel}${orderSuffix}.xlsx`);
     } finally {
       setGenerating(null);
     }
@@ -79,14 +78,14 @@ export default function ReportsPage() {
           </span>
           Reports
         </h2>
-        <p className="page-subtitle">Export printable catalogues or bulk-import books from Excel.</p>
+        <p className="page-subtitle">Export catalogues to Excel or bulk-import books from Excel.</p>
       </div>
 
       <div className="card card-pad space-y-4">
         <div>
-          <h3 className="section-title">Generate Printable Report</h3>
+          <h3 className="section-title">Generate Excel Report</h3>
           <p className="text-xs text-stone-500 mt-1">
-            Includes Serial Number, Book Title, Author, Main Series, and Sub-Series / Category for the selected
+            Includes Serial Number, Book Title, Author, and Sub-Series / Category for the selected
             scope (or the entire library).
           </p>
         </div>
@@ -125,14 +124,7 @@ export default function ReportsPage() {
         </div>
         <div className="flex gap-2 pt-1">
           <button
-            onClick={() => handleExport("pdf")}
-            disabled={generating !== null}
-            className="btn-danger flex-1"
-          >
-            <IconDownload className="w-4 h-4" /> {generating === "pdf" ? "Generating..." : "Download PDF"}
-          </button>
-          <button
-            onClick={() => handleExport("excel")}
+            onClick={() => handleExport()}
             disabled={generating !== null}
             className="btn flex-1 bg-emerald-600 text-white shadow-soft hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-300"
           >
@@ -146,8 +138,11 @@ export default function ReportsPage() {
           <div>
             <h3 className="section-title">Bulk Import from Excel</h3>
             <p className="text-xs text-stone-500 mt-1">
-              Upload an .xlsx file with columns: Title, Author, Language, Publisher, Year, ISBN, Notes,
-              Sub Series (optional — matched or created automatically). Duplicate title+author pairs are
+              Upload an .xlsx file whose header row has columns named exactly <strong>Title</strong>,{" "}
+              <strong>Author</strong>, and <strong>Category</strong> (case-insensitive; other spellings
+              like "Catagary" won't be recognized). Language, Publisher, Year, ISBN, and Notes are
+              optional extra columns. If a required column name doesn't match, the import is rejected
+              with a message telling you which one to rename. Duplicate title+author pairs are
               automatically added as additional copies.
             </p>
           </div>

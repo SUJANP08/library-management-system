@@ -10,7 +10,6 @@ import openpyxl
 
 from app.database import get_db
 from app import models, schemas, auth, crud
-from app.utils.pdf_generator import generate_books_pdf
 from app.utils.excel_generator import generate_books_excel
 
 router = APIRouter(prefix="/api/reports", tags=["Reports"])
@@ -94,26 +93,6 @@ def _content_disposition(filename: str) -> str:
     return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{quote(filename)}"
 
 
-@router.get("/books/pdf")
-def export_books_pdf(
-    series_id: Optional[int] = None, series_code: Optional[str] = None,
-    sub_series_id: Optional[int] = None,
-    author: Optional[str] = None, search: Optional[str] = None,
-    order_by: str = Query(
-        "series", pattern="^(series|latest)$",
-        description="'series' groups by serial number; 'latest' shows newest-added copies first.",
-    ),
-    db: Session = Depends(get_db), _user: models.User = Depends(auth.get_current_user),
-):
-    rows, title = _collect_rows(db, series_id, series_code, sub_series_id, author, search, order_by)
-    pdf_bytes = generate_books_pdf(rows, title, order_label=ORDER_LABELS[order_by])
-    filename = title.replace(" ", "_").replace("(", "").replace(")", "") + ".pdf"
-    return StreamingResponse(
-        io.BytesIO(pdf_bytes), media_type="application/pdf",
-        headers={"Content-Disposition": _content_disposition(filename)},
-    )
-
-
 @router.get("/books/excel")
 def export_books_excel(
     series_id: Optional[int] = None, series_code: Optional[str] = None,
@@ -144,7 +123,13 @@ async def import_books_excel(
 ):
     """
     Bulk import books from an Excel file into the given series.
-    Expected columns (header row, any order): Title, Author, Language, Publisher, Year, ISBN, Notes, Sub Series (optional)
+    Required columns (header row, any order, case-insensitive): Title, Author, Category.
+    Optional columns: Language, Publisher, Year, ISBN, Notes.
+    Column names must match exactly (aside from case/leading-trailing spaces) -
+    if a required column isn't found, the import is rejected up front with a
+    message naming exactly which column header is missing, so it can be
+    renamed in the file and re-uploaded, rather than guessing and silently
+    importing into the wrong field.
     Duplicate (title, author) pairs are automatically added as additional copies.
     """
     series = db.query(models.Series).filter(models.Series.id == series_id).first()
@@ -159,19 +144,35 @@ async def import_books_excel(
 
     ws = wb.active
     rows_iter = ws.iter_rows(values_only=True)
-    header = [str(h).strip().lower() if h else "" for h in next(rows_iter)]
+    raw_header = list(next(rows_iter))
 
-    def col(name):
-        return header.index(name) if name in header else None
+    def _norm(h) -> str:
+        return str(h).strip().lower() if h else ""
 
-    idx_title, idx_author = col("title"), col("author")
+    norm_header = [_norm(h) for h in raw_header]
+
+    def col(name: str) -> Optional[int]:
+        return norm_header.index(name) if name in norm_header else None
+
+    REQUIRED_COLUMNS = ["title", "author", "category"]
+
+    missing = [name.capitalize() for name in REQUIRED_COLUMNS if col(name) is None]
+    if missing:
+        found = ", ".join(str(h).strip() for h in raw_header if h and str(h).strip()) or "(none)"
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Column name(s) not recognized: {', '.join(missing)}. "
+                "The Excel file's header row must contain columns named exactly "
+                "'Title', 'Author', and 'Category' (case-insensitive). "
+                f"Columns found in your file: {found}. "
+                "Please rename the column header(s) to match and re-upload."
+            ),
+        )
+
+    idx_title, idx_author, idx_subseries = col("title"), col("author"), col("category")
     idx_lang, idx_pub, idx_year, idx_isbn, idx_notes = (
         col("language"), col("publisher"), col("year"), col("isbn"), col("notes"))
-    idx_subseries = col("sub series") if col("sub series") is not None else (
-        col("sub-series") if col("sub-series") is not None else col("category"))
-
-    if idx_title is None or idx_author is None:
-        raise HTTPException(status_code=400, detail="Excel file must have 'Title' and 'Author' columns")
 
     created, copies_added, errors = 0, 0, []
     for row_num, row in enumerate(rows_iter, start=2):
