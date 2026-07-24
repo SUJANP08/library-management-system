@@ -4,7 +4,6 @@ import { useAuth } from "../context/AuthContext";
 import {
   IconDashboard, IconBook, IconNewspaper, IconLayers, IconWand, IconReport, IconSettings, IconLogout,
 } from "./Icons";
-import ParticleFieldScene from "./three/ParticleFieldScene";
 
 const navItems = [
   { to: "/", label: "Dashboard", Icon: IconDashboard, end: true },
@@ -40,7 +39,6 @@ export default function Layout() {
         <div className="pointer-events-none absolute inset-0 bg-grain mix-blend-overlay" />
         <div className="pointer-events-none absolute -top-16 -right-20 w-64 h-64 rounded-full bg-brand-500/30 blur-3xl animate-float-slow" />
         <div className="pointer-events-none absolute bottom-24 -left-16 w-56 h-56 rounded-full bg-accent-400/20 blur-3xl animate-float" />
-        <ParticleFieldScene className="opacity-70" count={70} />
 
         <div className="relative px-6 py-7 flex items-center gap-3.5 border-b border-white/10">
           <BrandMark className="w-12 h-12" />

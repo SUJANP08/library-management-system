@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { IconBook, IconLayers, IconNewspaper } from "../components/Icons";
-import FloatingBooksScene from "../components/three/FloatingBooksScene";
 import TiltCard from "../components/TiltCard";
 
 export default function Login() {
@@ -34,8 +33,6 @@ export default function Login() {
       <div className="pointer-events-none absolute inset-0 bg-grain mix-blend-overlay" />
       <div className="pointer-events-none absolute -top-32 -right-24 w-[26rem] h-[26rem] rounded-full bg-accent-400/25 blur-3xl animate-float-slow" />
       <div className="pointer-events-none absolute -bottom-32 -left-24 w-[30rem] h-[30rem] rounded-full bg-brand-500/30 blur-3xl animate-float" />
-      {/* Live 3D scene: softly tumbling books drifting behind the login card */}
-      <FloatingBooksScene className="opacity-80" />
 
       <div className="relative w-full max-w-4xl grid md:grid-cols-2 gap-0 rounded-3xl overflow-hidden shadow-[0_30px_80px_-20px_rgba(0,0,0,0.6)] animate-rise">
         {/* Left: brand story panel (hidden on small screens) */}
