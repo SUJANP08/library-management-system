@@ -4,6 +4,8 @@ import { api } from "../api/client";
 import type { DashboardStats } from "../types";
 import { useAuth } from "../context/AuthContext";
 import { IconBook, IconNewspaper, IconReport, IconWand, IconArrowRight, IconLayers, IconFolder, IconSparkle } from "../components/Icons";
+import HeroOrbScene from "../components/three/HeroOrbScene";
+import TiltCard from "../components/TiltCard";
 
 const quickActions = [
   { to: "/books?action=add", label: "Add Book", sub: "Add book to catalog", Icon: IconBook, gradient: "from-blue-500 to-indigo-600" },
@@ -76,16 +78,20 @@ export default function Dashboard() {
         <div className="pointer-events-none absolute inset-0 bg-mesh-hero opacity-80" />
         <div className="pointer-events-none absolute inset-0 bg-grain mix-blend-overlay" />
         <div className="pointer-events-none absolute -top-20 -right-16 w-64 h-64 rounded-full bg-accent-400/25 blur-3xl animate-float-slow" />
-        <div className="relative">
-          <p className="text-cream-200/60 text-xs font-semibold uppercase tracking-[0.14em]">
-            {new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
-          </p>
-          <h2 className="font-display text-2xl sm:text-[32px] font-semibold text-white mt-2 tracking-tight flex items-center gap-2 flex-wrap">
-            {timeGreeting}, {user?.username || "Admin"} <span>👋</span>
-          </h2>
-          <p className="text-cream-200/70 text-sm mt-2 max-w-md">
-            Here's what's happening across the library today.
-          </p>
+        <div className="relative flex items-center justify-between gap-6">
+          <div>
+            <p className="text-cream-200/60 text-xs font-semibold uppercase tracking-[0.14em]">
+              {new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+            </p>
+            <h2 className="font-display text-2xl sm:text-[32px] font-semibold text-white mt-2 tracking-tight flex items-center gap-2 flex-wrap">
+              {timeGreeting}, {user?.username || "Admin"} <span>👋</span>
+            </h2>
+            <p className="text-cream-200/70 text-sm mt-2 max-w-md">
+              Here's what's happening across the library today.
+            </p>
+          </div>
+          {/* Living 3D emblem — purely decorative, hidden on small screens to keep the hero uncluttered */}
+          <HeroOrbScene className="hidden sm:block w-40 h-40 lg:w-52 lg:h-52 shrink-0" />
         </div>
       </div>
 
@@ -95,8 +101,9 @@ export default function Dashboard() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
           {statCards.map((s, i) => (
-            <div
+            <TiltCard
               key={s.label}
+              strength={5}
               className="card card-hover card-pad group animate-rise"
               style={{ animationDelay: `${i * 60}ms` }}
             >
@@ -106,7 +113,7 @@ export default function Dashboard() {
               <p className="text-xs text-stone-500 mt-3.5">{s.label}</p>
               <p className="text-[26px] font-display font-semibold text-stone-900 mt-0.5 tracking-tight">{s.value}</p>
               <p className="text-[11px] text-stone-400 mt-0.5">{s.sub}</p>
-            </div>
+            </TiltCard>
           ))}
         </div>
       )}
@@ -116,19 +123,20 @@ export default function Dashboard() {
         <h3 className="section-title mb-3.5">Quick Actions</h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {quickActions.map((action) => (
-            <button
-              key={action.label}
-              onClick={() => navigate(action.to)}
-              className="group text-left bg-white border border-stone-100 hover:border-transparent rounded-2xl px-3.5 py-4 flex flex-col gap-3 transition-all duration-250 ease-out active:scale-[0.97] hover:shadow-cardHover hover:-translate-y-0.5"
-            >
-              <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-soft bg-gradient-to-br ${action.gradient} group-hover:scale-110 transition-transform duration-300`}>
-                <action.Icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
-              </span>
-              <span>
-                <span className="block font-semibold text-[13px] text-stone-800 leading-tight">{action.label}</span>
-                <span className="block text-[11px] text-stone-400 mt-1 leading-tight">{action.sub}</span>
-              </span>
-            </button>
+            <TiltCard key={action.label} strength={4} className="rounded-2xl">
+              <button
+                onClick={() => navigate(action.to)}
+                className="group text-left bg-white border border-stone-100 hover:border-transparent rounded-2xl px-3.5 py-4 flex flex-col gap-3 transition-all duration-250 ease-out active:scale-[0.97] hover:shadow-cardHover hover:-translate-y-0.5 w-full h-full"
+              >
+                <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-soft bg-gradient-to-br ${action.gradient} group-hover:scale-110 transition-transform duration-300`}>
+                  <action.Icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
+                </span>
+                <span>
+                  <span className="block font-semibold text-[13px] text-stone-800 leading-tight">{action.label}</span>
+                  <span className="block text-[11px] text-stone-400 mt-1 leading-tight">{action.sub}</span>
+                </span>
+              </button>
+            </TiltCard>
           ))}
         </div>
       </div>

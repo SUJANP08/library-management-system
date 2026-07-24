@@ -1,18 +1,29 @@
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas, auth
 from app.config import settings
+from app.utils.device_info import summarize_user_agent
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
 
+def _client_ip(request: Request) -> str:
+    # Behind a reverse proxy (nginx, per this project's Dockerfile/nginx.conf),
+    # the real client IP arrives via X-Forwarded-For; fall back to the direct
+    # connecting peer if that header isn't present.
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 @router.post("/login", response_model=schemas.Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = auth.authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(
@@ -24,7 +35,42 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         data={"sub": user.username, "role": user.role.value},
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
+
+    # Record who logged in, from where, and with what device/browser - shown
+    # to admins on the Settings > Login Activity panel. Best-effort: a
+    # logging failure should never block an otherwise-successful login.
+    try:
+        ua = request.headers.get("user-agent", "")
+        log = models.LoginLog(
+            user_id=user.id,
+            username=user.username,
+            full_name=user.full_name,
+            role=user.role.value,
+            ip_address=_client_ip(request),
+            user_agent=ua,
+            device_summary=summarize_user_agent(ua),
+        )
+        db.add(log)
+        db.commit()
+    except Exception:
+        db.rollback()
+
     return schemas.Token(access_token=access_token, role=user.role.value, username=user.username)
+
+
+@router.get("/login-history", response_model=list[schemas.LoginLogOut])
+def login_history(
+    limit: int = 200,
+    db: Session = Depends(get_db),
+    _admin: models.User = Depends(auth.require_admin),
+):
+    """Admin-only: who has logged into the system, from what device/IP, and when."""
+    return (
+        db.query(models.LoginLog)
+        .order_by(models.LoginLog.login_at.desc())
+        .limit(min(limit, 1000))
+        .all()
+    )
 
 
 @router.get("/me", response_model=schemas.UserOut)

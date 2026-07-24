@@ -7,7 +7,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import { useToast, ToastContainer } from "../components/Toast";
 import { IconPlus, IconSearch, IconNewspaper, IconEdit, IconTrash, IconX } from "../components/Icons";
 
-const emptyForm = { series_id: "", title: "", month: "" };
+const emptyForm = { title: "", month: "" };
 
 export default function TarangaPage() {
   const { isAdmin } = useAuth();
@@ -15,7 +15,11 @@ export default function TarangaPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [entries, setEntries] = useState<Magazine[]>([]);
-  const [series, setSeries] = useState<Series[]>([]);
+  // The Taranga series itself - fixed, resolved automatically by the
+  // backend (see GET /magazines/taranga-series). Shown as a read-only
+  // label ("will be added under M — Taranga") instead of a picker, since
+  // Taranga always belongs to this one series.
+  const [tarangaSeries, setTarangaSeries] = useState<Series | null>(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -26,10 +30,7 @@ export default function TarangaPage() {
   const [deleteTarget, setDeleteTarget] = useState<Magazine | null>(null);
 
   useEffect(() => {
-    api.get("/series").then((res) => {
-      setSeries(res.data);
-      if (res.data.length) setForm((f) => ({ ...f, series_id: res.data[0].id.toString() }));
-    });
+    api.get("/magazines/taranga-series").then((res) => setTarangaSeries(res.data));
   }, []);
 
   useEffect(() => {
@@ -54,14 +55,14 @@ export default function TarangaPage() {
 
   function openCreate() {
     setEditing(null);
-    setForm({ series_id: series[0]?.id.toString() || "", title: "", month: "" });
+    setForm({ title: "", month: "" });
     setError("");
     setShowForm(true);
   }
 
   function openEdit(m: Magazine) {
     setEditing(m);
-    setForm({ series_id: m.series_id.toString(), title: m.title, month: m.month || "" });
+    setForm({ title: m.title, month: m.month || "" });
     setError("");
     setShowForm(true);
   }
@@ -75,8 +76,9 @@ export default function TarangaPage() {
         await api.put(`/magazines/${editing.id}`, { title: form.title, month: form.month });
         showToast("Taranga updated", "success");
       } else {
+        // series is always the fixed Taranga series - resolved automatically
+        // on the backend, never chosen here.
         const res = await api.post("/magazines/quick-add", {
-          series_id: Number(form.series_id),
           title: form.title,
           month: form.month || null,
         });
@@ -177,18 +179,12 @@ export default function TarangaPage() {
               </button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {!editing && (
-                <div>
-                  <label className="field-label">Series</label>
-                  <select
-                    className="select-field"
-                    value={form.series_id}
-                    onChange={(e) => setForm({ ...form, series_id: e.target.value })}
-                    required
-                  >
-                    {series.map((s) => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
-                  </select>
-                </div>
+              {!editing && tarangaSeries && (
+                <p className="text-xs text-stone-500 bg-stone-50 rounded-lg px-3 py-2">
+                  Will be added to <span className="font-semibold text-stone-700">
+                    {tarangaSeries.code} — {tarangaSeries.name}
+                  </span> automatically.
+                </p>
               )}
               <div>
                 <label className="field-label">Title</label>

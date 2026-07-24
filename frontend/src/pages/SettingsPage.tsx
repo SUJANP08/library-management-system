@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api, downloadBlob } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import {
-  IconUsers, IconShield, IconDownload, IconUpload, IconTrash, IconSettings,
+  IconUsers, IconShield, IconDownload, IconUpload, IconTrash, IconSettings, IconMonitor,
 } from "../components/Icons";
 
 export default function SettingsPage() {
@@ -16,13 +16,18 @@ export default function SettingsPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [newUser, setNewUser] = useState({ username: "", password: "", full_name: "", role: "staff" });
 
+  const [loginHistory, setLoginHistory] = useState<any[]>([]);
+
   function loadHistory() {
     if (isAdmin) api.get("/backup/history").then((res) => setHistory(res.data));
   }
   function loadUsers() {
     if (isAdmin) api.get("/auth/users").then((res) => setUsers(res.data));
   }
-  useEffect(() => { loadHistory(); loadUsers(); }, [isAdmin]);
+  function loadLoginHistory() {
+    if (isAdmin) api.get("/auth/login-history").then((res) => setLoginHistory(res.data));
+  }
+  useEffect(() => { loadHistory(); loadUsers(); loadLoginHistory(); }, [isAdmin]);
 
   async function handleExport() {
     const res = await api.get("/backup/export", { responseType: "blob" });
@@ -84,6 +89,7 @@ export default function SettingsPage() {
           Signed in as <strong className="text-stone-900">{user?.username}</strong>{" "}
           <span className="badge-brand capitalize">{user?.role}</span>
         </p>
+        <p className="text-xs text-stone-400 pt-1">KAK Library Management System — v1.3.0</p>
       </div>
 
       {isAdmin && (
@@ -164,6 +170,46 @@ export default function SettingsPage() {
                 <IconUsers className="w-4 h-4" /> Add User
               </button>
             </form>
+          </div>
+
+          <div className="card card-pad space-y-3">
+            <h3 className="section-title flex items-center gap-1.5">
+              <IconMonitor className="w-4 h-4" /> Login Activity
+            </h3>
+            <p className="text-xs text-stone-500">
+              Who has logged into the system, from what device/browser, and when. Admin-only.
+            </p>
+            {loginHistory.length === 0 ? (
+              <p className="text-sm text-stone-400">No login activity recorded yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-stone-500 border-b border-stone-100">
+                      <th className="py-1.5 pr-3 font-semibold">User</th>
+                      <th className="py-1.5 pr-3 font-semibold">Device</th>
+                      <th className="py-1.5 pr-3 font-semibold">IP Address</th>
+                      <th className="py-1.5 pr-3 font-semibold">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loginHistory.map((l) => (
+                      <tr key={l.id} className="border-b border-stone-50">
+                        <td className="py-1.5 pr-3">
+                          {l.full_name || l.username}
+                          {l.role && <span className="badge-gray capitalize ml-1.5">{l.role}</span>}
+                        </td>
+                        <td className="py-1.5 pr-3 text-stone-600" title={l.user_agent || ""}>
+                          {l.device_summary || "Unknown device"}
+                        </td>
+                        <td className="py-1.5 pr-3 text-stone-600">{l.ip_address || "—"}</td>
+                        <td className="py-1.5 pr-3 text-stone-500">{new Date(l.login_at).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </>
       )}

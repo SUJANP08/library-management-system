@@ -211,4 +211,71 @@ input, textarea, select {
   .nav-pill {
     @apply flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ease-out relative;
   }
+
+  /* ---------- 3D tilt card sheen ---------- */
+  .tilt-card {
+    position: relative;
+    will-change: transform;
+  }
+  .tilt-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(
+      420px circle at var(--sheen-x, 50%) var(--sheen-y, 50%),
+      rgba(255, 255, 255, 0.35),
+      transparent 60%
+    );
+    opacity: 0;
+    transition: opacity 0.25s ease-out;
+    pointer-events: none;
+    mix-blend-mode: overlay;
+  }
+  .tilt-card:hover::after {
+    opacity: 1;
+  }
+
+  /* ---------- Gradient-shift text accent ---------- */
+  .text-shimmer {
+    background-image: linear-gradient(100deg, #f3c858 0%, #fff3ea 25%, #f38b3c 50%, #fff3ea 75%, #f3c858 100%);
+    background-size: 220% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: shimmer 4.5s linear infinite;
+  }
+
+  /* ---------- Magnetic / lift button micro-interaction ---------- */
+  .btn-magnetic {
+    @apply transition-transform duration-200 ease-out;
+  }
+  .btn-magnetic:hover {
+    animation: magnetPulse 1.6s ease-in-out infinite;
+  }
+}
+
+@layer utilities {
+  .perspective-1000 { perspective: 1000px; }
+  .preserve-3d { transform-style: preserve-3d; }
+  .backface-hidden { backface-visibility: hidden; }
+}
+
+@keyframes magnetPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(232, 114, 42, 0.35); }
+  50% { box-shadow: 0 0 0 10px rgba(232, 114, 42, 0); }
+}
+
+@keyframes glowPulse {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(1.06); }
+}
+
+/* Smooth cross-fade for route/page changes (applied by a wrapper in Layout). */
+.page-transition {
+  animation: pageIn 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes pageIn {
+  0% { opacity: 0; transform: translateY(10px) scale(0.995); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }

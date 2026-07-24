@@ -60,7 +60,10 @@ def export_backup(db: Session = Depends(get_db), admin: models.User = Depends(au
 
     log = models.BackupLog(
         filename=filename, created_by=admin.username,
-        record_count=len(data["books"]) + len(data["magazines"]),
+        record_count=(
+            len(data["series"]) + len(data["sub_series"]) + len(data["books"])
+            + len(data["book_copies"]) + len(data["magazines"]) + len(data["magazine_issues"])
+        ),
     )
     db.add(log)
     db.commit()
@@ -70,6 +73,33 @@ def export_backup(db: Session = Depends(get_db), admin: models.User = Depends(au
         buffer, media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+def _coerce_enum(value, enum_cls):
+    """
+    Backup files store Enum columns using the member's `.value` (e.g.
+    "available"), but SQLAlchemy's `Enum()` column type persists the
+    member's `.name` in the database by default (e.g. "AVAILABLE"). Handing
+    the raw exported string straight to the ORM constructor skips that
+    name/value translation, so the INSERT fails the column's CHECK
+    constraint - and because every copy in the loop shares one `db.commit()`
+    at the end, that single bad value silently rolled back *every* book
+    copy (and magazine issue) in the whole restore, while the book/magazine
+    records themselves (no Enum columns) restored fine. This is why only
+    the base book ("10 a") survived a restore while its extra copies
+    ("10(1)", "10(2)", ...) disappeared.
+    """
+    if value is None:
+        return None
+    if isinstance(value, enum_cls):
+        return value
+    try:
+        return enum_cls(value)  # match by value, e.g. "available"
+    except ValueError:
+        try:
+            return enum_cls[value]  # fall back to matching by name, e.g. "AVAILABLE"
+        except KeyError:
+            return value  # unrecognized - let the DB raise a clear error rather than guess
 
 
 @router.post("/import")
@@ -106,6 +136,8 @@ async def import_backup(
     series_id_map = {}
     for s in data.get("series", []):
         old_id = s.pop("id", None)
+        if "material_type" in s:
+            s["material_type"] = _coerce_enum(s["material_type"], models.MaterialType)
         existing = db.query(models.Series).filter(models.Series.code == s["code"]).first()
         if existing:
             for k, v in s.items():
@@ -137,22 +169,53 @@ async def import_backup(
     db.commit()
 
     book_id_map = {}
+    books_created = set()  # old_ids that produced a brand-new Book row (vs matched an existing one)
     for b in data.get("books", []):
         old_id = b.pop("id", None)
         b["series_id"] = series_id_map.get(b["series_id"], b["series_id"])
         if b.get("sub_series_id") is not None:
             b["sub_series_id"] = sub_series_id_map.get(b["sub_series_id"], b["sub_series_id"])
         clean = {k: v for k, v in b.items() if k not in ("created_at", "updated_at")}
-        new_book = models.Book(**clean)
-        db.add(new_book)
-        db.flush()
-        book_id_map[old_id] = new_book.id
+        # Match by (series, base_serial) - the book's real unique key - same
+        # as series/sub-series above. Without this, restoring onto a
+        # database that already has this book crashes on the unique
+        # constraint and aborts the whole restore.
+        existing_book = db.query(models.Book).filter(
+            models.Book.series_id == clean["series_id"], models.Book.base_serial == clean["base_serial"]
+        ).first()
+        if existing_book:
+            book_id_map[old_id] = existing_book.id
+        else:
+            new_book = models.Book(**clean)
+            db.add(new_book)
+            db.flush()
+            book_id_map[old_id] = new_book.id
+            books_created.add(old_id)
     db.commit()
 
+    # copy_number to use next for a book we *matched* (didn't create), so
+    # incoming copies never collide with copy_numbers the book already has.
+    next_copy_number = {}
     for c in data.get("book_copies", []):
         c.pop("id", None)
-        c["book_id"] = book_id_map.get(c["book_id"], c["book_id"])
+        old_book_id = c["book_id"]
+        new_book_id = book_id_map.get(old_book_id, old_book_id)
+        c["book_id"] = new_book_id
+        if "status" in c:
+            c["status"] = _coerce_enum(c["status"], models.CopyStatus)
         clean = {k: v for k, v in c.items() if k != "created_at"}
+        if old_book_id not in books_created:
+            n = next_copy_number.get(new_book_id)
+            if n is None:
+                row = (
+                    db.query(models.BookCopy.copy_number)
+                    .filter(models.BookCopy.book_id == new_book_id)
+                    .order_by(models.BookCopy.copy_number.desc())
+                    .first()
+                )
+                n = (row[0] if row else 0) + 1
+            clean["copy_number"] = n
+            next_copy_number[new_book_id] = n + 1
         db.add(models.BookCopy(**clean))
     db.commit()
 
@@ -161,15 +224,23 @@ async def import_backup(
         old_id = m.pop("id", None)
         m["series_id"] = series_id_map.get(m["series_id"], m["series_id"])
         clean = {k: v for k, v in m.items() if k not in ("created_at", "updated_at")}
-        new_mag = models.Magazine(**clean)
-        db.add(new_mag)
-        db.flush()
-        mag_id_map[old_id] = new_mag.id
+        existing_mag = db.query(models.Magazine).filter(
+            models.Magazine.series_id == clean["series_id"], models.Magazine.base_serial == clean["base_serial"]
+        ).first()
+        if existing_mag:
+            mag_id_map[old_id] = existing_mag.id
+        else:
+            new_mag = models.Magazine(**clean)
+            db.add(new_mag)
+            db.flush()
+            mag_id_map[old_id] = new_mag.id
     db.commit()
 
     for i in data.get("magazine_issues", []):
         i.pop("id", None)
         i["magazine_id"] = mag_id_map.get(i["magazine_id"], i["magazine_id"])
+        if "status" in i:
+            i["status"] = _coerce_enum(i["status"], models.CopyStatus)
         clean = {k: v for k, v in i.items() if k != "created_at"}
         db.add(models.MagazineIssue(**clean))
     db.commit()

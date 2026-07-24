@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { IconBook, IconLayers, IconNewspaper } from "../components/Icons";
+import FloatingBooksScene from "../components/three/FloatingBooksScene";
+import TiltCard from "../components/TiltCard";
 
 export default function Login() {
   const { login } = useAuth();
@@ -32,6 +34,8 @@ export default function Login() {
       <div className="pointer-events-none absolute inset-0 bg-grain mix-blend-overlay" />
       <div className="pointer-events-none absolute -top-32 -right-24 w-[26rem] h-[26rem] rounded-full bg-accent-400/25 blur-3xl animate-float-slow" />
       <div className="pointer-events-none absolute -bottom-32 -left-24 w-[30rem] h-[30rem] rounded-full bg-brand-500/30 blur-3xl animate-float" />
+      {/* Live 3D scene: softly tumbling books drifting behind the login card */}
+      <FloatingBooksScene className="opacity-80" />
 
       <div className="relative w-full max-w-4xl grid md:grid-cols-2 gap-0 rounded-3xl overflow-hidden shadow-[0_30px_80px_-20px_rgba(0,0,0,0.6)] animate-rise">
         {/* Left: brand story panel (hidden on small screens) */}
@@ -40,8 +44,8 @@ export default function Login() {
             <div className="w-16 h-16 rounded-2xl bg-white shadow-glow p-[3px] ring-1 ring-white/30">
               <img src="/brand/kak-logo.jpg" alt="KAK logo" className="w-full h-full object-cover rounded-[13px]" />
             </div>
-            <h1 className="font-display text-3xl font-semibold text-white mt-8 leading-tight">
-              Sri Kutlaya<br />Adhyayna Kendra(R)
+            <h1 className="font-display text-3xl font-semibold mt-8 leading-tight">
+              <span className="text-white">Sri Kutlaya</span><br /><span className="text-shimmer">Adhyayna Kendra(R)</span>
             </h1>
             <p className="text-cream-200/60 text-sm mt-3 leading-relaxed max-w-xs">
               ಶ್ರೀ ಕುಟ್ಲಯ್ಯ ಅಧ್ಯಯನ ಕೇಂದ್ರ (ರಿ) — A digital home for the library's books
@@ -52,7 +56,7 @@ export default function Login() {
         </div>
 
         {/* Right: form panel */}
-        <div className="bg-white/95 backdrop-blur-xl p-8 sm:p-10 flex flex-col justify-center">
+        <TiltCard strength={2.5} className="bg-white/95 backdrop-blur-xl p-8 sm:p-10 flex flex-col justify-center">
           <div className="text-center md:text-left mb-8">
             <div className="w-14 h-14 mx-auto md:mx-0 rounded-2xl bg-white shadow-card border border-cream-200 overflow-hidden md:hidden">
               <img src="/brand/kak-logo.jpg" alt="KAK logo" className="w-full h-full object-cover" />
@@ -97,7 +101,7 @@ export default function Login() {
           <p className="text-xs text-stone-400 text-center md:text-left mt-6">
             
           </p>
-        </div>
+        </TiltCard>
       </div>
     </div>
   );

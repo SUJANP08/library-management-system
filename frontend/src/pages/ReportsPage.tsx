@@ -15,6 +15,7 @@ export default function ReportsPage() {
   const [orderBy, setOrderBy] = useState<BookOrderBy>("series");
   const [generating, setGenerating] = useState<"excel" | null>(null);
 
+  const [importType, setImportType] = useState<"books" | "taranga">("books");
   const [importSeriesId, setImportSeriesId] = useState("");
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importResult, setImportResult] = useState<any>(null);
@@ -51,16 +52,25 @@ export default function ReportsPage() {
 
   async function handleImport(e: React.FormEvent) {
     e.preventDefault();
-    if (!importFile || !importSeriesId) return;
+    if (!importFile) return;
+    if (importType === "books" && !importSeriesId) return;
     setImporting(true);
     setImportResult(null);
     const formData = new FormData();
     formData.append("file", importFile);
     try {
-      const res = await api.post("/reports/import/excel", formData, {
-        params: { series_id: importSeriesId },
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      // Same upload architecture for both: multipart file + this shared
+      // form/handler. Only the target endpoint (and whether a series must
+      // be picked) differs, since Taranga always uses its own fixed series
+      // and only needs Title + Month columns.
+      const res = importType === "taranga"
+        ? await api.post("/reports/import/taranga-excel", formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+          })
+        : await api.post("/reports/import/excel", formData, {
+            params: { series_id: importSeriesId },
+            headers: { "Content-Type": "multipart/form-data" },
+          });
       setImportResult(res.data);
     } catch (err: any) {
       setImportResult({ errors: [err?.response?.data?.detail || "Import failed"] });
@@ -137,21 +147,54 @@ export default function ReportsPage() {
         <div className="card card-pad space-y-4">
           <div>
             <h3 className="section-title">Bulk Import from Excel</h3>
-            <p className="text-xs text-stone-500 mt-1">
-              Upload an .xlsx file whose header row has columns named exactly <strong>Title</strong>,{" "}
-              <strong>Author</strong>, and <strong>Category</strong> (case-insensitive; other spellings
-              like "Catagary" won't be recognized). Language, Publisher, Year, ISBN, and Notes are
-              optional extra columns. If a required column name doesn't match, the import is rejected
-              with a message telling you which one to rename. Duplicate title+author pairs are
-              automatically added as additional copies.
-            </p>
+            <div className="flex gap-2 mt-2">
+              <button
+                type="button"
+                onClick={() => { setImportType("books"); setImportResult(null); }}
+                className={`btn-sm rounded-full px-3 py-1.5 text-xs font-semibold ${
+                  importType === "books" ? "bg-brand-600 text-white" : "bg-stone-100 text-stone-600"
+                }`}
+              >
+                Books
+              </button>
+              <button
+                type="button"
+                onClick={() => { setImportType("taranga"); setImportResult(null); }}
+                className={`btn-sm rounded-full px-3 py-1.5 text-xs font-semibold ${
+                  importType === "taranga" ? "bg-brand-600 text-white" : "bg-stone-100 text-stone-600"
+                }`}
+              >
+                Taranga
+              </button>
+            </div>
+            {importType === "books" ? (
+              <p className="text-xs text-stone-500 mt-3">
+                Upload an .xlsx file whose header row has columns named exactly <strong>Title</strong>,{" "}
+                <strong>Author</strong>, and <strong>Category</strong> (case-insensitive; other spellings
+                like "Catagary" won't be recognized). Language, Publisher, Year, ISBN, and Notes are
+                optional extra columns. If a required column name doesn't match, the import is rejected
+                with a message telling you which one to rename. Duplicate title+author pairs are
+                automatically added as additional copies.
+              </p>
+            ) : (
+              <p className="text-xs text-stone-500 mt-3">
+                Upload an .xlsx file whose header row has a column named exactly <strong>Title</strong>{" "}
+                (case-insensitive). An optional <strong>Month</strong> column is also read if present.
+                Every row becomes its own new Taranga entry in the fixed Taranga series - no Series to
+                pick, and no Author/Category needed. Any other columns (e.g. left over from a book
+                template) are simply ignored, so you can reuse a familiar spreadsheet without editing it
+                first.
+              </p>
+            )}
           </div>
           <form onSubmit={handleImport} className="space-y-3">
-            <select className="select-field" value={importSeriesId}
-                    onChange={(e) => setImportSeriesId(e.target.value)} required>
-              <option value="">Select target Main Series...</option>
-              {series.map((s) => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
-            </select>
+            {importType === "books" && (
+              <select className="select-field" value={importSeriesId}
+                      onChange={(e) => setImportSeriesId(e.target.value)} required>
+                <option value="">Select target Main Series...</option>
+                {series.map((s) => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
+              </select>
+            )}
             <input
               type="file"
               accept=".xlsx"
@@ -170,6 +213,9 @@ export default function ReportsPage() {
                   <p>✅ New books created: {importResult.new_books_created}</p>
                   <p>➕ Additional copies added: {importResult.additional_copies_added}</p>
                 </>
+              )}
+              {importResult.new_taranga_created !== undefined && (
+                <p>✅ New Taranga entries created: {importResult.new_taranga_created}</p>
               )}
               {importResult.errors?.length > 0 && (
                 <div className="text-red-600">

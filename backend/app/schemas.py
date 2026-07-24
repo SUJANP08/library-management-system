@@ -33,6 +33,18 @@ class UserOut(BaseModel):
     is_active: bool
 
 
+class LoginLogOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    username: str
+    full_name: Optional[str] = None
+    role: Optional[str] = None
+    ip_address: Optional[str] = None
+    device_summary: Optional[str] = None
+    user_agent: Optional[str] = None
+    login_at: datetime
+
+
 # ---------- Series ----------
 class SeriesCreate(BaseModel):
     code: str = Field(..., min_length=1, max_length=10, description="e.g. A, B, G, AA")
@@ -167,11 +179,15 @@ class AddCopyRequest(BaseModel):
 
 # ---------- Taranga (Magazines) ----------
 class TarangaCreate(BaseModel):
-    """Simplified quick-entry: only Series + Title + Month are required.
+    """Simplified quick-entry: only Title + Month are required. The series
+    is always the single fixed Taranga (magazine-type) series and is
+    resolved automatically on the backend (see crud.get_or_create_taranga_series)
+    - the caller never needs to choose one. series_id is accepted for
+    backwards compatibility with older API clients but is otherwise ignored.
     Every submission gets its own brand-new serial number - no dedup/merge,
     unlike books. Other fields (publisher, language, frequency, notes) are
     kept in the database for future use but are never required here."""
-    series_id: int
+    series_id: Optional[int] = None
     title: str
     month: Optional[str] = None
 

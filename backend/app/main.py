@@ -87,7 +87,7 @@ def bootstrap_default_sub_series():
 app = FastAPI(
     title="Library Management System API",
     description="Central API for books, magazines, series management, reports, and backups.",
-    version="1.0.0",
+    version="1.3.0",
 )
 
 app.add_middleware(

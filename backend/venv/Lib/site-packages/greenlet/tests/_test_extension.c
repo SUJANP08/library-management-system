@@ -162,6 +162,12 @@ test_throw(PyObject* UNUSED(self), PyGreenlet* g)
 {
     const char msg[] = "take that sucka!";
     PyObject* msg_obj = Py_BuildValue("s", msg);
+
+    if (msg_obj == NULL) {
+        return NULL;
+    }
+
+
     PyGreenlet_Throw(g, PyExc_ValueError, msg_obj, NULL);
     Py_DECREF(msg_obj);
     if (PyErr_Occurred()) {

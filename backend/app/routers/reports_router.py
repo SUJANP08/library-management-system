@@ -51,17 +51,37 @@ def _collect_rows(db: Session, series_id: Optional[int], series_code: Optional[s
     # newest first - so a freshly added copy of an older book (e.g. a new
     # A-12(2)) rises to the top instead of being buried right after A-12,
     # without ever changing the serial numbering scheme.
+    #
+    # IMPORTANT: a book can legitimately have zero copies left (e.g. its
+    # only copy was deleted via "Delete Copy" - marked lost/withdrawn and
+    # removed - without deleting the book's catalog record). Looping only
+    # over b.copies would silently drop that book from the report entirely,
+    # even though it still exists in the catalog and shows up on the Books
+    # page. That's the root cause of exports appearing to "lose" books as a
+    # series accumulates copy-level edits over time. Every book that matches
+    # the filters MUST contribute at least one row.
     rows = []
     for b in books:
-        for c in b.copies:
+        if b.copies:
+            for c in b.copies:
+                rows.append({
+                    "serial": crud.display_serial_for_book(b, c.copy_number),
+                    "title": b.title,
+                    "author": b.author,
+                    "category": b.series.name,
+                    "sub_category": b.sub_series.name if b.sub_series else "—",
+                    "_series_key": (b.series_id, b.base_serial, c.copy_number),
+                    "_latest_key": c.created_at or b.created_at,
+                })
+        else:
             rows.append({
-                "serial": crud.display_serial_for_book(b, c.copy_number),
+                "serial": crud.display_serial_for_book(b),
                 "title": b.title,
                 "author": b.author,
                 "category": b.series.name,
                 "sub_category": b.sub_series.name if b.sub_series else "—",
-                "_series_key": (b.series_id, b.base_serial, c.copy_number),
-                "_latest_key": c.created_at or b.created_at,
+                "_series_key": (b.series_id, b.base_serial, 0),
+                "_latest_key": b.created_at,
             })
 
     if order_by == "latest":
@@ -199,5 +219,85 @@ async def import_books_excel(
     return {
         "new_books_created": created,
         "additional_copies_added": copies_added,
+        "errors": errors,
+    }
+
+
+@router.post("/import/taranga-excel")
+async def import_taranga_excel(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _admin: models.User = Depends(auth.require_admin),
+):
+    """
+    Bulk import Taranga entries from an Excel file.
+
+    Unlike the general book importer, Taranga only ever needs Title and
+    Month - there's no Author/Category/etc to fill in, and no series to
+    choose (every row is auto-assigned to the fixed Taranga series, same as
+    the "Add Taranga" quick-entry form). Required column (header row, any
+    order, case-insensitive): Title. Optional column: Month. Any other
+    columns present (e.g. a leftover Author/Category column from reusing a
+    book template) are simply ignored rather than rejected, so a librarian
+    can reuse a familiar spreadsheet layout without stripping columns first.
+    Every valid row becomes its own new Taranga entry (no dedup/merge,
+    matching the single-entry "Add Taranga" behavior) with its own
+    auto-assigned serial number.
+    """
+    content = await file.read()
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Could not read Excel file. Please upload a valid .xlsx file.")
+
+    ws = wb.active
+    rows_iter = ws.iter_rows(values_only=True)
+    try:
+        raw_header = list(next(rows_iter))
+    except StopIteration:
+        raise HTTPException(status_code=400, detail="The Excel file is empty - no header row was found.")
+
+    def _norm(h) -> str:
+        return str(h).strip().lower() if h else ""
+
+    norm_header = [_norm(h) for h in raw_header]
+
+    def col(name: str) -> Optional[int]:
+        return norm_header.index(name) if name in norm_header else None
+
+    idx_title = col("title")
+    if idx_title is None:
+        found = ", ".join(str(h).strip() for h in raw_header if h and str(h).strip()) or "(none)"
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Column name not recognized: Title. The Excel file's header row must contain "
+                "a column named exactly 'Title' (case-insensitive). "
+                f"Columns found in your file: {found}. "
+                "Please rename the column header and re-upload."
+            ),
+        )
+    idx_month = col("month")
+
+    created, errors = 0, []
+    for row_num, row in enumerate(rows_iter, start=2):
+        if not row or all(v is None or str(v).strip() == "" for v in row):
+            continue  # skip fully blank rows
+        title_val = row[idx_title] if idx_title < len(row) else None
+        if not title_val or not str(title_val).strip():
+            errors.append(f"Row {row_num}: Title is required and was left blank.")
+            continue
+        try:
+            payload = schemas.TarangaCreate(
+                title=str(title_val).strip(),
+                month=str(row[idx_month]).strip() if idx_month is not None and idx_month < len(row) and row[idx_month] else None,
+            )
+            crud.create_taranga(db, payload)
+            created += 1
+        except Exception as e:
+            errors.append(f"Row {row_num}: {str(e)}")
+
+    return {
+        "new_taranga_created": created,
         "errors": errors,
     }

@@ -1468,6 +1468,20 @@ class TestBrokenGreenlets(TestCase):
             output
         )
 
+    def test_switch_leaves_no_critical_section_held(self):
+        # Free-threaded builds take per-object locks via
+        # Py_BEGIN_CRITICAL_SECTION, tracked in tstate->critical_section. A
+        # switch swaps C stacks, so leaving those locks held strands them on the
+        # fiber we left: asyncio's Task.__step holds one on the running task
+        # across the step, and touching that task from a child fiber then
+        # deadlocked re-taking it. Out of process because a regression is a
+        # hang, not a catchable error.
+        # (repro: freethread_switch_deadlock.py in the repo root)
+        if not RUNNING_ON_FREETHREAD_BUILD:
+            self.skipTest("Only free-threaded builds take critical sections")
+        output = self.run_script('fail_switch_critical_section.py')
+        self.assertIn('SWITCH CS OK', output)
+
 class TestModule(TestCase):
 
     @unittest.skipUnless(hasattr(sys, '_is_gil_enabled'),

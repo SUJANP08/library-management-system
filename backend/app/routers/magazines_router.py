@@ -9,6 +9,21 @@ from app import models, schemas, auth, crud
 router = APIRouter(prefix="/api/magazines", tags=["Taranga"])
 
 
+@router.get("/taranga-series", response_model=schemas.SeriesOut)
+def get_taranga_series(db: Session = Depends(get_db),
+                        _user: models.User = Depends(auth.get_current_user)):
+    """
+    Returns the single fixed Series that Taranga entries always belong to
+    (auto-created if it doesn't exist yet). Lets the frontend show which
+    series a new Taranga entry will land in without offering a picker.
+    """
+    series = crud.get_or_create_taranga_series(db)
+    db.commit()
+    db.refresh(series)
+    from app.routers.series_router import _series_to_out
+    return _series_to_out(db, series)
+
+
 def _mag_to_out(m: models.Magazine) -> schemas.MagazineOut:
     out = schemas.MagazineOut.model_validate(m)
     out.series_code = m.series.code
@@ -38,9 +53,11 @@ def list_magazines(
 def quick_add_taranga(payload: schemas.TarangaCreate, db: Session = Depends(get_db),
                        _user: models.User = Depends(auth.get_current_user)):
     """
-    Simplified Taranga entry: only series, title, and month are required.
-    Every submission is assigned a brand-new serial number automatically -
-    no manual numbering, no dedup with existing titles.
+    Simplified Taranga entry: only title and month are required. The series
+    is always the fixed Taranga series, resolved automatically (never asked
+    of the user - see crud.get_or_create_taranga_series). Every submission
+    is assigned a brand-new serial number automatically - no manual
+    numbering, no dedup with existing titles.
     """
     taranga = crud.create_taranga(db, payload)
     return _mag_to_out(taranga)

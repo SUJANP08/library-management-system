@@ -6,6 +6,7 @@ import greenlet
 
 
 from . import TestCase
+from . import RUNNING_ON_FREETHREAD_BUILD
 from .leakcheck import fails_leakcheck_on_py314_or_less
 # These only work with greenlet gc support
 # which is no longer optional.
@@ -83,6 +84,32 @@ class TestGC(TestCase):
         del g
         greenlet.getcurrent()
         gc.collect()
+
+    def test_issue515_freethread_c_stack_refs(self):
+        # Guards issue #515: a new greenlet inherited the parent's C-stack refs
+        # and the free-threaded collector segfaulted following the dangling
+        # nodes. This has to run out of process because the regression is a hard
+        # crash, not something we can catch.
+        # https://github.com/python-greenlet/greenlet/issues/515
+        if not RUNNING_ON_FREETHREAD_BUILD:
+            self.skipTest("Only free-threaded builds are affected")
+        output = self.run_script('fail_issue_515_freethread_gc.py')
+        self.assertIn('ISSUE 515 OK', output)
+
+    def test_c_stack_refs_suspended_gc(self):
+        # Review follow-up to #515: a greenlet that suspends while holding a
+        # _PyCStackRef has those deferred references visited by tp_traverse (the
+        # snapshot in TPythonState.cpp), so the free-threaded collector can't
+        # free an object reachable only through the suspended greenlet's C stack.
+        # The script pins a (deferred-refcounted) class via a metaclass __get__,
+        # switches away from inside it, drops every other reference, and
+        # collects; without the fix the class is gone on resume. Out of process
+        # because the regression is a use-after-free.
+        # https://github.com/python-greenlet/greenlet/issues/515
+        if not RUNNING_ON_FREETHREAD_BUILD:
+            self.skipTest("Only free-threaded builds are affected")
+        output = self.run_script('fail_c_stack_refs_suspended_gc.py')
+        self.assertIn('C STACK REFS GC OK', output)
 
     def test_crashing_deferred_object(self):
         if sys.version_info < (3, 15):

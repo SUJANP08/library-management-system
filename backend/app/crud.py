@@ -7,7 +7,6 @@ Core business logic that isn't just simple CRUD passthrough:
 from typing import Optional
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from fastapi import HTTPException
 
 from app import models, schemas
@@ -24,6 +23,94 @@ def display_serial_for_book(book: models.Book, copy_number: int = 1) -> str:
     if copy_number > 1:
         return f"{base}({copy_number})"
     return base
+
+
+def next_available_serial(db: Session, series_id: int) -> int:
+    """
+    Returns the smallest positive integer not currently used as a base_serial
+    within this series, across BOTH Books and Magazines (a series' numbering
+    is shared between the two so "A-1, A-2, A-3..." never collides regardless
+    of material type).
+
+    This is deliberately computed fresh from the actual rows in use rather
+    than from a separately-maintained counter. A separately-maintained
+    "next_serial" counter only ever increases - once a number is deleted it's
+    gone forever, which is exactly the reported bug (delete book #94, add a
+    new book, and the series jumps straight to #95 instead of reusing #94).
+    Computing the smallest unused number on every insert means a deleted
+    number becomes available again immediately, with no separate "renumber"
+    step required.
+
+    For a library-scale catalog (hundreds to low thousands of records per
+    series) scanning the existing serials on every insert is inexpensive.
+    """
+    used_books = {
+        row[0] for row in db.query(models.Book.base_serial)
+        .filter(models.Book.series_id == series_id).all()
+    }
+    used_mags = {
+        row[0] for row in db.query(models.Magazine.base_serial)
+        .filter(models.Magazine.series_id == series_id).all()
+    }
+    used = used_books | used_mags
+    n = 1
+    while n in used:
+        n += 1
+    return n
+
+
+def get_or_create_taranga_series(db: Session) -> models.Series:
+    """
+    Resolves the single fixed Series that Taranga entries always belong to.
+
+    Taranga doesn't get its own hardcoded series ID - series remain fully
+    dynamic/admin-managed like everywhere else in the app. Instead, the
+    Taranga series is identified structurally: it's the (active) Series
+    whose material_type is MAGAZINE. This is exactly how Series already
+    distinguishes "book" series from "magazine" series (see models.Series),
+    so no schema change is needed.
+
+    - If exactly one active magazine-type series exists, use it.
+    - If more than one exists (an admin created extras in Series
+      Management), prefer the one with code "M" if present, otherwise the
+      oldest one - Taranga entries should keep landing in a single,
+      predictable series rather than silently switching.
+    - If none exists yet, auto-create the default "M - Taranga" series so
+      Taranga entry keeps working without asking the user to first go set
+      one up in Series Management.
+    """
+    candidates = (
+        db.query(models.Series)
+        .filter(models.Series.material_type == models.MaterialType.MAGAZINE,
+                models.Series.is_active == True)  # noqa: E712
+        .order_by(models.Series.created_at)
+        .all()
+    )
+    if candidates:
+        for s in candidates:
+            if s.code.upper() == "M":
+                return s
+        return candidates[0]
+
+    # No magazine-type series exists yet - create the default one on the fly.
+    existing_m = db.query(models.Series).filter(models.Series.code == "M").first()
+    if existing_m:
+        # Code "M" is taken by something else (unlikely, but don't silently
+        # collide with an admin-created series) - fall back to a free code.
+        code = "TARANGA"
+        suffix = 1
+        while db.query(models.Series).filter(models.Series.code == code).first():
+            suffix += 1
+            code = f"TARANGA{suffix}"
+    else:
+        code = "M"
+
+    series = models.Series(
+        code=code, name="Taranga", material_type=models.MaterialType.MAGAZINE, next_serial=1,
+    )
+    db.add(series)
+    db.flush()
+    return series
 
 
 def find_existing_book(db: Session, series_id: int, title: str, author: str):
@@ -99,8 +186,10 @@ def create_book_or_add_copy(db: Session, payload: schemas.BookCreate) -> tuple[m
         db.refresh(existing)
         return existing, False
 
-    # Brand new title -> assign next serial in series
-    new_serial = series.next_serial
+    # Brand new title -> assign the smallest unused serial in this series,
+    # filling any gap left by a previously deleted book/magazine instead of
+    # always incrementing.
+    new_serial = next_available_serial(db, series.id)
     book = models.Book(
         series_id=series.id,
         sub_series_id=sub_series_id,
@@ -114,12 +203,15 @@ def create_book_or_add_copy(db: Session, payload: schemas.BookCreate) -> tuple[m
         notes=payload.notes,
     )
     db.add(book)
-    series.next_serial = new_serial + 1
-    db.add(series)
-    db.flush()  # get book.id before adding copy
+    db.flush()  # get book.id before adding copy, and make base_serial visible to the hint recompute below
 
     first_copy = models.BookCopy(book_id=book.id, copy_number=1)
     db.add(first_copy)
+    # next_serial is kept only as a display hint (shown in Series Management);
+    # it is never read when assigning serials, so recomputing it here can't
+    # reintroduce the original bug.
+    series.next_serial = next_available_serial(db, series.id)
+    db.add(series)
     db.commit()
     db.refresh(book)
     return book, True
@@ -144,15 +236,14 @@ def create_taranga(db: Session, payload: schemas.TarangaCreate) -> models.Magazi
     Quick-entry Taranga creation. Unlike books, every submission gets its
     own brand-new serial number in the series - there is no dedup/merge by
     title, since each physical Taranga issue is catalogued separately
-    (e.g. M-1, M-2, M-3...). Only series, title, and month are required.
+    (e.g. M-1, M-2, M-3...). Only title and month are required from the
+    user - the series is always the fixed Taranga (magazine-type) series,
+    resolved automatically via get_or_create_taranga_series so the user is
+    never asked to pick one.
     """
-    series = db.query(models.Series).filter(models.Series.id == payload.series_id).first()
-    if not series:
-        raise HTTPException(status_code=404, detail="Series not found")
-    if not series.is_active:
-        raise HTTPException(status_code=400, detail="Series is inactive")
+    series = get_or_create_taranga_series(db)
 
-    new_serial = series.next_serial
+    new_serial = next_available_serial(db, series.id)
     taranga = models.Magazine(
         series_id=series.id,
         base_serial=new_serial,
@@ -160,7 +251,9 @@ def create_taranga(db: Session, payload: schemas.TarangaCreate) -> models.Magazi
         month=payload.month,
     )
     db.add(taranga)
-    series.next_serial = new_serial + 1
+    db.flush()
+    series.next_serial = next_available_serial(db, series.id)
+    db.add(series)
     db.commit()
     db.refresh(taranga)
     return taranga
@@ -183,7 +276,7 @@ def create_magazine_or_next_issue(db: Session, payload: schemas.MagazineCreate):
     if existing:
         return existing, False
 
-    new_serial = series.next_serial
+    new_serial = next_available_serial(db, series.id)
     magazine = models.Magazine(
         series_id=series.id,
         base_serial=new_serial,
@@ -195,23 +288,26 @@ def create_magazine_or_next_issue(db: Session, payload: schemas.MagazineCreate):
         notes=payload.notes,
     )
     db.add(magazine)
-    series.next_serial = new_serial + 1
+    db.flush()
+    series.next_serial = next_available_serial(db, series.id)
+    db.add(series)
     db.commit()
     db.refresh(magazine)
     return magazine, True
 
 
 def renumber_series(db: Session, series_id: int):
-    """Utility: recompute next_serial based on max base_serial currently in
-    use (useful after bulk import or manual DB edits)."""
+    """Utility: refresh the displayed 'next serial' hint for a series
+    (Series Management shows this). Since serial assignment itself always
+    computes the smallest unused number on the fly (see
+    next_available_serial), this endpoint is no longer required for correct
+    numbering - it's kept as a manual way to resync the hint after bulk
+    imports or direct DB edits, and now correctly reports the next GAP
+    rather than MAX(base_serial) + 1."""
     series = db.query(models.Series).filter(models.Series.id == series_id).first()
     if not series:
         raise HTTPException(status_code=404, detail="Series not found")
-    max_book = db.query(func.max(models.Book.base_serial)).filter(
-        models.Book.series_id == series_id).scalar() or 0
-    max_mag = db.query(func.max(models.Magazine.base_serial)).filter(
-        models.Magazine.series_id == series_id).scalar() or 0
-    series.next_serial = max(max_book, max_mag) + 1
+    series.next_serial = next_available_serial(db, series_id)
     db.commit()
     db.refresh(series)
     return series

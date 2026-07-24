@@ -215,6 +215,26 @@ class MagazineIssue(Base):
     magazine = relationship("Magazine", back_populates="issues")
 
 
+class LoginLog(Base):
+    """
+    One row per successful login, so admins can see who logged in, from
+    what device/browser, and from what IP address/time. Denormalizes
+    username/full_name/role (instead of only a user_id FK) so the login
+    history stays readable even if a user account is later deleted.
+    """
+    __tablename__ = "login_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    username = Column(String(100), nullable=False)
+    full_name = Column(String(200), nullable=True)
+    role = Column(String(20), nullable=True)
+    ip_address = Column(String(64), nullable=True)
+    user_agent = Column(Text, nullable=True)
+    device_summary = Column(String(255), nullable=True)  # e.g. "Chrome on Windows (Desktop)"
+    login_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 class BackupLog(Base):
     __tablename__ = "backup_logs"
 
