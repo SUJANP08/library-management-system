@@ -126,7 +126,7 @@ export default function ReportsPage() {
             <p className="text-xs font-semibold text-stone-600">Row order</p>
             <p className="text-[11px] text-stone-400">
               {orderBy === "series"
-                ? "Grouped by serial number (e.g. A-12, A-12(2), A-13)."
+                ? "Grouped by serial number (e.g. A-12, A-12(1), A-12(2), A-13)."
                 : "Newest copies first, so recently added books are easy to spot."}
             </p>
           </div>
@@ -179,11 +179,12 @@ export default function ReportsPage() {
             ) : (
               <p className="text-xs text-stone-500 mt-3">
                 Upload an .xlsx file whose header row has a column named exactly <strong>Title</strong>{" "}
-                (case-insensitive). An optional <strong>Month</strong> column is also read if present.
-                Every row becomes its own new Taranga entry in the fixed Taranga series - no Series to
-                pick, and no Author/Category needed. Any other columns (e.g. left over from a book
-                template) are simply ignored, so you can reuse a familiar spreadsheet without editing it
-                first.
+                (case-insensitive). An optional month column is also read if present - named{" "}
+                <strong>Month</strong>, <strong>Issue Month</strong>, <strong>Month/Year</strong>, or{" "}
+                <strong>Period</strong>. Every row becomes its own new Taranga entry in the fixed Taranga
+                series - no Series to pick, and no Author/Category needed. Any other columns (e.g. left
+                over from a book template) are simply ignored, so you can reuse a familiar spreadsheet
+                without editing it first.
               </p>
             )}
           </div>
@@ -216,6 +217,12 @@ export default function ReportsPage() {
               )}
               {importResult.new_taranga_created !== undefined && (
                 <p>✅ New Taranga entries created: {importResult.new_taranga_created}</p>
+              )}
+              {importResult.warnings?.length > 0 && (
+                <div className="text-amber-700">
+                  <p className="font-medium">Warnings:</p>
+                  {importResult.warnings.map((w: string, i: number) => <p key={i}>{w}</p>)}
+                </div>
               )}
               {importResult.errors?.length > 0 && (
                 <div className="text-red-600">

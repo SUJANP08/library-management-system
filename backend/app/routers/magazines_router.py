@@ -89,7 +89,10 @@ def delete_magazine(magazine_id: int, db: Session = Depends(get_db),
     magazine = db.query(models.Magazine).filter(models.Magazine.id == magazine_id).first()
     if not magazine:
         raise HTTPException(status_code=404, detail="Taranga not found")
+    series_id, deleted_serial = magazine.series_id, magazine.base_serial
     db.delete(magazine)
+    db.flush()
+    crud.close_serial_gap(db, series_id, deleted_serial)
     db.commit()
     return {"detail": "Magazine deleted"}
 

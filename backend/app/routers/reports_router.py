@@ -46,7 +46,7 @@ def _collect_rows(db: Session, series_id: Optional[int], series_code: Optional[s
     books = q.all()
 
     # One row per physical copy. In Series Order, each book's copies stay
-    # grouped under its serial number (A-12, A-12(2), A-13, ...). In Latest
+    # grouped under its serial number (A-12, A-12(1), A-12(2), A-13...). In Latest
     # Added Order, rows are sorted purely by when each copy was added,
     # newest first - so a freshly added copy of an older book (e.g. a new
     # A-12(2)) rises to the top instead of being buried right after A-12,
@@ -63,9 +63,10 @@ def _collect_rows(db: Session, series_id: Optional[int], series_code: Optional[s
     rows = []
     for b in books:
         if b.copies:
+            total_copies = len(b.copies)
             for c in b.copies:
                 rows.append({
-                    "serial": crud.display_serial_for_book(b, c.copy_number),
+                    "serial": crud.display_serial_for_book(b, c.copy_number, total_copies),
                     "title": b.title,
                     "author": b.author,
                     "category": b.series.name,
@@ -82,6 +83,35 @@ def _collect_rows(db: Session, series_id: Optional[int], series_code: Optional[s
                 "sub_category": b.sub_series.name if b.sub_series else "—",
                 "_series_key": (b.series_id, b.base_serial, 0),
                 "_latest_key": b.created_at,
+            })
+
+    # Magazines/Taranga entries live in a completely separate table from
+    # Books (see models.Magazine) - they were never included here, so
+    # picking the Taranga series (or "All Series") in the report always
+    # produced a report with 0 records for every Taranga entry, even though
+    # they show up fine on the Taranga page itself. Sub-series and author
+    # filters only make sense for Books (Magazine has neither column), so a
+    # report scoped to either of those is a books-only report by definition
+    # and magazines are correctly left out of it - not filtered out by
+    # mistake.
+    if not sub_series_id and not author:
+        mags_q = db.query(models.Magazine).options(joinedload(models.Magazine.series))
+        if series_id:
+            mags_q = mags_q.filter(models.Magazine.series_id == series_id)
+        if series_code:
+            mags_q = mags_q.join(models.Series).filter(models.Series.code == series_code.upper())
+        if search:
+            mags_q = mags_q.filter(models.Magazine.title.ilike(f"%{search}%"))
+
+        for m in mags_q.all():
+            rows.append({
+                "serial": f"{m.series.code}-{m.base_serial}",
+                "title": m.title,
+                "author": "—",  # Taranga/magazine entries have no author field
+                "category": m.series.name,
+                "sub_category": m.month or "—",  # no sub-series concept for magazines; show the issue month instead
+                "_series_key": (m.series_id, m.base_serial, 0),
+                "_latest_key": m.created_at,
             })
 
     if order_by == "latest":
@@ -236,7 +266,8 @@ async def import_taranga_excel(
     Month - there's no Author/Category/etc to fill in, and no series to
     choose (every row is auto-assigned to the fixed Taranga series, same as
     the "Add Taranga" quick-entry form). Required column (header row, any
-    order, case-insensitive): Title. Optional column: Month. Any other
+    order, case-insensitive): Title. Optional column for the issue month:
+    accepts 'Month', 'Issue Month', 'Month/Year', or 'Period'. Any other
     columns present (e.g. a leftover Author/Category column from reusing a
     book template) are simply ignored rather than rejected, so a librarian
     can reuse a familiar spreadsheet layout without stripping columns first.
@@ -277,7 +308,17 @@ async def import_taranga_excel(
                 "Please rename the column header and re-upload."
             ),
         )
-    idx_month = col("month")
+
+    # A plain "month" column is the documented/expected header, but
+    # librarians reasonably reuse spreadsheets with slightly different
+    # wording ("Issue Month", "Month/Year", "Period"...). Previously only
+    # an exact "month" match was recognized, so anything else silently
+    # imported every row with no month at all - no error, no warning,
+    # nothing to flag that the column was missed. Recognize the common
+    # variants here, and warn explicitly below if none of them match, so
+    # a mismatch is visible instead of silently dropped data.
+    MONTH_HEADER_ALIASES = ("month", "issue month", "month/year", "month / year", "period", "issue period")
+    idx_month = next((i for i, h in enumerate(norm_header) if h in MONTH_HEADER_ALIASES), None)
 
     created, errors = 0, []
     for row_num, row in enumerate(rows_iter, start=2):
@@ -297,7 +338,19 @@ async def import_taranga_excel(
         except Exception as e:
             errors.append(f"Row {row_num}: {str(e)}")
 
+    warnings = []
+    if idx_month is None and created > 0:
+        found = ", ".join(str(h).strip() for h in raw_header if h and str(h).strip()) or "(none)"
+        warnings.append(
+            f"No 'Month' column was recognized (columns found: {found}), so all {created} Taranga "
+            "entries above were imported without a month. Rename that column to exactly 'Month' "
+            "(or 'Issue Month', 'Month/Year', 'Period') and re-import to set it - note this adds "
+            "brand-new entries rather than updating the ones just created, so delete those first if "
+            "you don't want duplicates, or add the month to each one individually via Edit."
+        )
+
     return {
         "new_taranga_created": created,
         "errors": errors,
+        "warnings": warnings,
     }

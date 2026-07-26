@@ -2,7 +2,7 @@
 Core business logic that isn't just simple CRUD passthrough:
 - Auto-generating the next serial number within a series.
 - Detecting existing (title, author) within a series and adding a new
-  copy (A-74(2), A-74(3)...) instead of a duplicate base record.
+  copy (A-74(1), A-74(2)...) instead of a duplicate base record.
 """
 from typing import Optional
 
@@ -18,9 +18,26 @@ def normalize(text: str) -> str:
     return " ".join((text or "").strip().lower().split())
 
 
-def display_serial_for_book(book: models.Book, copy_number: int = 1) -> str:
+def display_serial_for_book(book: models.Book, copy_number: int = 1, total_copies: int = 1) -> str:
+    """
+    Builds the human-facing serial label for one physical copy of a book.
+
+    - A book with only one copy on record shows the bare serial: "A-10".
+    - A book with more than one copy shows every copy with its copy_number
+      in parentheses, matching the library's own on-the-shelf copy
+      notation: "A-10(1)", "A-10(2)", "A-10(3)"... This applies to ALL of
+      that book's copies, including the first one - so once a second copy
+      is added, the first copy's label also gains "(1)" rather than
+      staying bare. A bare "A-10" next to "A-10(2)" doesn't read as
+      "copy 1 of 2" the way "A-10(1)" next to "A-10(2)" does, which is what
+      made a book's second (and later) copies hard to spot/recognize in
+      reports.
+    - Each copy's number is its own fixed copy_number, not its position
+      among currently-remaining copies, so a copy keeps the same number
+      for its lifetime even if an earlier copy is later deleted.
+    """
     base = f"{book.series.code}-{book.base_serial}"
-    if copy_number > 1:
+    if total_copies > 1:
         return f"{base}({copy_number})"
     return base
 
@@ -72,10 +89,10 @@ def get_or_create_taranga_series(db: Session) -> models.Series:
 
     - If exactly one active magazine-type series exists, use it.
     - If more than one exists (an admin created extras in Series
-      Management), prefer the one with code "M" if present, otherwise the
+      Management), prefer the one with code "K" if present, otherwise the
       oldest one - Taranga entries should keep landing in a single,
       predictable series rather than silently switching.
-    - If none exists yet, auto-create the default "M - Taranga" series so
+    - If none exists yet, auto-create the default "K - Taranga" series so
       Taranga entry keeps working without asking the user to first go set
       one up in Series Management.
     """
@@ -88,14 +105,14 @@ def get_or_create_taranga_series(db: Session) -> models.Series:
     )
     if candidates:
         for s in candidates:
-            if s.code.upper() == "M":
+            if s.code.upper() == "K":
                 return s
         return candidates[0]
 
     # No magazine-type series exists yet - create the default one on the fly.
-    existing_m = db.query(models.Series).filter(models.Series.code == "M").first()
-    if existing_m:
-        # Code "M" is taken by something else (unlikely, but don't silently
+    existing_k = db.query(models.Series).filter(models.Series.code == "K").first()
+    if existing_k:
+        # Code "K" is taken by something else (unlikely, but don't silently
         # collide with an admin-created series) - fall back to a free code.
         code = "TARANGA"
         suffix = 1
@@ -103,7 +120,7 @@ def get_or_create_taranga_series(db: Session) -> models.Series:
             suffix += 1
             code = f"TARANGA{suffix}"
     else:
-        code = "M"
+        code = "K"
 
     series = models.Series(
         code=code, name="Taranga", material_type=models.MaterialType.MAGAZINE, next_serial=1,
@@ -159,7 +176,7 @@ def create_book_or_add_copy(db: Session, payload: schemas.BookCreate) -> tuple[m
     """
     Adds a new book. If a book with the same title+author already exists in
     the chosen series, this instead adds a new copy to that existing book
-    (A-74(2), A-74(3), ...) and returns (book, False).
+    (A-74(1), A-74(2), ...) and returns (book, False).
     Otherwise creates a brand-new book with the series' next serial number
     and returns (book, True).
     """
@@ -296,6 +313,54 @@ def create_magazine_or_next_issue(db: Session, payload: schemas.MagazineCreate):
     return magazine, True
 
 
+def close_serial_gap(db: Session, series_id: int, deleted_serial: int) -> None:
+    """
+    Called right after a book or magazine is deleted. Shifts every
+    remaining book/magazine in the series whose base_serial is greater
+    than the deleted one DOWN by one, so e.g. deleting 12 out of
+    10, 11, 12, 13, 14, 15 turns the survivors into 10, 11, 12, 13, 14
+    instead of leaving a permanent hole at 12 (which next_available_serial
+    would otherwise only backfill the next time something new is added -
+    fine for keeping numbers dense over time, but not what's wanted when
+    the librarian expects the whole series to re-number immediately).
+
+    Books and magazines share one numbering pool per series (see
+    next_available_serial), so both are shifted together here to stay
+    consistent and collision-free.
+
+    Processed in ascending base_serial order, flushing one row at a time:
+    each UPDATE lands on the serial the previous UPDATE just vacated (or
+    the deleted book's own vacated serial, for the first one), so it never
+    collides with the unique (series_id, base_serial) constraint even
+    though the shift touches many rows in a single transaction.
+
+    The caller is responsible for deleting (and flushing/committing) the
+    book/magazine itself before calling this.
+    """
+    to_shift: list = []
+    to_shift.extend(
+        db.query(models.Book)
+        .filter(models.Book.series_id == series_id, models.Book.base_serial > deleted_serial)
+        .all()
+    )
+    to_shift.extend(
+        db.query(models.Magazine)
+        .filter(models.Magazine.series_id == series_id, models.Magazine.base_serial > deleted_serial)
+        .all()
+    )
+    to_shift.sort(key=lambda obj: obj.base_serial)
+
+    for obj in to_shift:
+        obj.base_serial -= 1
+        db.add(obj)
+        db.flush()
+
+    series = db.query(models.Series).filter(models.Series.id == series_id).first()
+    if series:
+        series.next_serial = next_available_serial(db, series_id)
+        db.add(series)
+
+
 def renumber_series(db: Session, series_id: int):
     """Utility: refresh the displayed 'next serial' hint for a series
     (Series Management shows this). Since serial assignment itself always
@@ -337,7 +402,7 @@ def _title_similarity(norm_a: str, norm_b: str) -> float:
 def _book_to_exact_match_out(book: "models.Book") -> "schemas.ExactMatchOut":
     return schemas.ExactMatchOut(
         book_id=book.id,
-        display_serial=display_serial_for_book(book),
+        display_serial=display_serial_for_book(book, total_copies=len(book.copies) or 1),
         title=book.title,
         author=book.author,
         series_id=book.series_id,

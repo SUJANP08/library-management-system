@@ -29,10 +29,31 @@ export default function SettingsPage() {
   }
   useEffect(() => { loadHistory(); loadUsers(); loadLoginHistory(); }, [isAdmin]);
 
+  const [exportError, setExportError] = useState<string | null>(null);
+
   async function handleExport() {
-    const res = await api.get("/backup/export", { responseType: "blob" });
-    downloadBlob(res.data, `library_backup_${new Date().toISOString().slice(0, 10)}.json`);
-    loadHistory();
+    setExportError(null);
+    try {
+      const res = await api.get("/backup/export", { responseType: "blob" });
+      downloadBlob(res.data, `library_backup_${new Date().toISOString().slice(0, 10)}.json`);
+      loadHistory();
+    } catch (err: any) {
+      // responseType "blob" means an error body also comes back as a Blob,
+      // not parsed JSON - read it as text to get the real detail message.
+      let detail = "Backup download failed. Please try again.";
+      const data = err?.response?.data;
+      if (data instanceof Blob) {
+        try {
+          const parsed = JSON.parse(await data.text());
+          detail = parsed.detail || detail;
+        } catch {
+          /* not JSON, keep default message */
+        }
+      } else if (data?.detail) {
+        detail = data.detail;
+      }
+      setExportError(detail);
+    }
   }
 
   async function handleRestore(e: React.FormEvent) {
@@ -102,6 +123,9 @@ export default function SettingsPage() {
             <button onClick={handleExport} className="btn-primary">
               <IconDownload className="w-4 h-4" /> Download Backup
             </button>
+            {exportError && (
+              <p className="text-sm text-red-600 bg-red-50 rounded-lg p-2.5">{exportError}</p>
+            )}
             {history.length > 0 && (
               <div className="text-xs text-stone-500 pt-2 space-y-1 border-t border-stone-100 mt-1">
                 <p className="font-semibold text-stone-600 pt-2">Recent backups:</p>

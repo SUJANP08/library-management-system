@@ -51,12 +51,12 @@ def bootstrap_default_series():
                 ("B", "Kannada Kavya & Nataka", models.MaterialType.BOOK),
                 ("C", "Science Books", models.MaterialType.BOOK),
                 ("G", "English Story Books", models.MaterialType.BOOK),
-                ("M", "Taranga", models.MaterialType.MAGAZINE),
+                ("K", "Taranga", models.MaterialType.MAGAZINE),
             ]
             for code, name, mtype in defaults:
                 db.add(models.Series(code=code, name=name, material_type=mtype, next_serial=1))
             db.commit()
-            print("[bootstrap] Seeded default series (A, B, C, G, M). Edit/delete anytime in Series Management.")
+            print("[bootstrap] Seeded default series (A, B, C, G, K). Edit/delete anytime in Series Management.")
     finally:
         db.close()
 

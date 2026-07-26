@@ -34,10 +34,11 @@ def _book_to_out(book: models.Book, order_by: str = "series") -> schemas.BookOut
         copies.sort(key=lambda c: c.created_at or book.created_at, reverse=True)
     else:
         copies.sort(key=lambda c: c.copy_number)
+    total_copies = len(copies)
     copies_out = []
     for c in copies:
         co = schemas.BookCopyOut.model_validate(c)
-        co.display_serial = crud.display_serial_for_book(book, c.copy_number)
+        co.display_serial = crud.display_serial_for_book(book, c.copy_number, total_copies)
         copies_out.append(co)
     out.copies = copies_out
     out.latest_activity = _book_latest_activity(book)
@@ -56,7 +57,7 @@ def list_books(
         "series",
         pattern="^(series|latest)$",
         description=(
-            "'series' groups/sorts by serial number (e.g. A-12, A-12(2), A-13). "
+            "'series' groups/sorts by serial number (e.g. A-12, A-12(1), A-12(2), A-13). "
             "'latest' shows the newest-added books/copies first; serial numbers are unchanged."
         ),
     ),
@@ -134,7 +135,7 @@ def create_book(payload: schemas.BookCreate, db: Session = Depends(get_db),
                  _user: models.User = Depends(auth.get_current_user)):
     """
     Adds a new book. If title+author already exist in this series, this
-    automatically registers it as an additional copy (A-74(2), A-74(3)...)
+    automatically registers it as an additional copy (A-74(1), A-74(2)...)
     of the existing record instead of creating a duplicate entry.
     """
     book, was_new = crud.create_book_or_add_copy(db, payload)
@@ -176,12 +177,18 @@ def delete_book(book_id: int, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail="Book not found")
     issued_copies = [c for c in book.copies if c.status == models.CopyStatus.ISSUED]
     if issued_copies:
-        issued_serials = ", ".join(crud.display_serial_for_book(book, c.copy_number) for c in issued_copies)
+        total_copies = len(book.copies)
+        issued_serials = ", ".join(
+            crud.display_serial_for_book(book, c.copy_number, total_copies) for c in issued_copies
+        )
         raise HTTPException(
             status_code=400,
             detail=f"Cannot delete: {issued_serials} still marked as issued. Mark the copy as returned/available first."
         )
+    series_id, deleted_serial = book.series_id, book.base_serial
     db.delete(book)
+    db.flush()
+    crud.close_serial_gap(db, series_id, deleted_serial)
     db.commit()
     return {"detail": "Book (and all its copies) deleted"}
 
@@ -210,5 +217,5 @@ def update_copy(book_id: int, copy_id: int, payload: schemas.BookCopyUpdate,
     db.commit()
     db.refresh(copy)
     out = schemas.BookCopyOut.model_validate(copy)
-    out.display_serial = crud.display_serial_for_book(copy.book, copy.copy_number)
+    out.display_serial = crud.display_serial_for_book(copy.book, copy.copy_number, len(copy.book.copies))
     return out

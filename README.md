@@ -31,7 +31,8 @@ library — books, magazines, and any future material types — built with:
   assigns the next number in that series (e.g. `A-74`).
 - **Automatic duplicate/copy detection** — adding a book with the same title
   + author already present in a series registers it as an additional copy
-  instead of a duplicate record: `A-74`, `A-74(2)`, `A-74(3)`, ...
+  instead of a duplicate record: `A-74`, then once a second copy exists,
+  every copy is labelled with its copy number - `A-74(1)`, `A-74(2)`, ...
 - **Delete Book** with a confirmation dialog, automatic list refresh, and a
   success toast. Deletion is blocked with a clear message if any copy of the
   book is currently marked "issued" — return it first, then delete.

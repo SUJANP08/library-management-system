@@ -9,8 +9,10 @@ Design notes
 - Book: one row per unique (series, title, author). Holds the "base serial"
   number, e.g. 74 for A-74.
 - BookCopy: one row per physical copy of a Book. copy_number 1, 2, 3...
-  Display format is "A-74" for the first copy and "A-74(2)", "A-74(3)"
-  for additional copies, matching the requested numbering scheme.
+  Display format is "A-74" when only one copy exists; once a second copy
+  is added, every copy shows its own copy_number in parentheses -
+  "A-74(1)", "A-74(2)", "A-74(3)"... - matching the library's own
+  on-the-shelf copy notation.
 - Magazine / MagazineIssue mirrors the same pattern for periodicals, with
   issue tracking (issue number + issue date/period) instead of copies.
 - Everything is Unicode (UTF-8) by default in both SQLite and Postgres,
@@ -148,9 +150,11 @@ class Book(Base):
 class BookCopy(Base):
     """
     A single physical copy of a Book.
-    copy_number 1 -> displayed as "A-74"
-    copy_number 2 -> displayed as "A-74(2)"
-    copy_number 3 -> displayed as "A-74(3)"
+    Display label depends on how many copies the book currently has:
+    - Only 1 copy total -> bare "A-74" regardless of copy_number.
+    - 2+ copies total -> every copy shows its own copy_number in
+      parentheses: 1 -> "A-74(1)", 2 -> "A-74(2)", 3 -> "A-74(3)"...
+    See crud.display_serial_for_book() for the actual formatting logic.
     """
     __tablename__ = "book_copies"
     __table_args__ = (

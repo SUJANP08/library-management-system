@@ -171,7 +171,7 @@ class BookOut(BaseModel):
 
 class AddCopyRequest(BaseModel):
     """Used when the same title+author already exists in a series and the
-    user wants to add another physical copy (A-74(2), A-74(3), ...)."""
+    user wants to add another physical copy (A-74(1), A-74(2), ...)."""
     book_id: int
     acquired_date: Optional[date] = None
     remarks: Optional[str] = None

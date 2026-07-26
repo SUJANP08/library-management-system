@@ -2,7 +2,7 @@ import io
 import json
 import os
 import shutil
-from datetime import datetime
+from datetime import datetime, date
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse, FileResponse
@@ -52,23 +52,37 @@ def export_backup(db: Session = Depends(get_db), admin: models.User = Depends(au
         "magazine_issues": _serialize_table(db.query(models.MagazineIssue).all()),
     }
 
-    os.makedirs(settings.BACKUP_DIR, exist_ok=True)
+    json_bytes = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
     filename = f"library_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    filepath = os.path.join(settings.BACKUP_DIR, filename)
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
 
-    log = models.BackupLog(
-        filename=filename, created_by=admin.username,
-        record_count=(
-            len(data["series"]) + len(data["sub_series"]) + len(data["books"])
-            + len(data["book_copies"]) + len(data["magazines"]) + len(data["magazine_issues"])
-        ),
-    )
-    db.add(log)
-    db.commit()
+    # Saving a copy to BACKUP_DIR and logging it to backup_history is a nice
+    # extra, but it must never be able to block the download itself - the
+    # download is the thing the person actually clicked for. In a
+    # containerized deployment BACKUP_DIR may not be writable (read-only
+    # filesystem, missing volume mount, permissions, etc.); previously that
+    # made the whole request 500 and the browser downloaded nothing, with no
+    # error shown anywhere. Now it's best-effort: log a warning and still
+    # hand back the file.
+    try:
+        os.makedirs(settings.BACKUP_DIR, exist_ok=True)
+        filepath = os.path.join(settings.BACKUP_DIR, filename)
+        with open(filepath, "wb") as f:
+            f.write(json_bytes)
 
-    buffer = io.BytesIO(json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
+        log = models.BackupLog(
+            filename=filename, created_by=admin.username,
+            record_count=(
+                len(data["series"]) + len(data["sub_series"]) + len(data["books"])
+                + len(data["book_copies"]) + len(data["magazines"]) + len(data["magazine_issues"])
+            ),
+        )
+        db.add(log)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"[backup] WARNING: could not save backup copy to {settings.BACKUP_DIR}: {e}")
+
+    buffer = io.BytesIO(json_bytes)
     return StreamingResponse(
         buffer, media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
@@ -100,6 +114,27 @@ def _coerce_enum(value, enum_cls):
             return enum_cls[value]  # fall back to matching by name, e.g. "AVAILABLE"
         except KeyError:
             return value  # unrecognized - let the DB raise a clear error rather than guess
+
+
+def _coerce_date(value):
+    """
+    Backup files store Date columns (BookCopy.acquired_date,
+    MagazineIssue.received_date) as ISO strings like "2026-07-26", because
+    that's what _serialize_table turns them into for JSON export. Handing
+    that string straight to the ORM constructor crashes the INSERT with
+    "SQLite Date type only accepts Python date objects" - and because every
+    copy in the loop shares one db.commit() at the end, that single failure
+    rolled back *every* book copy (and magazine issue) in the whole
+    restore, while the book/magazine records themselves (no Date columns)
+    restored fine. This is why only the base book ("10a") survived a
+    restore while its extra copies ("10(1)a", "10(2)a", ...) disappeared.
+    """
+    if value is None or isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(value)
+    except (TypeError, ValueError):
+        return value  # unrecognized - let the DB raise a clear error rather than guess
 
 
 @router.post("/import")
@@ -203,6 +238,8 @@ async def import_backup(
         c["book_id"] = new_book_id
         if "status" in c:
             c["status"] = _coerce_enum(c["status"], models.CopyStatus)
+        if "acquired_date" in c:
+            c["acquired_date"] = _coerce_date(c["acquired_date"])
         clean = {k: v for k, v in c.items() if k != "created_at"}
         if old_book_id not in books_created:
             n = next_copy_number.get(new_book_id)
@@ -241,6 +278,8 @@ async def import_backup(
         i["magazine_id"] = mag_id_map.get(i["magazine_id"], i["magazine_id"])
         if "status" in i:
             i["status"] = _coerce_enum(i["status"], models.CopyStatus)
+        if "received_date" in i:
+            i["received_date"] = _coerce_date(i["received_date"])
         clean = {k: v for k, v in i.items() if k != "created_at"}
         db.add(models.MagazineIssue(**clean))
     db.commit()

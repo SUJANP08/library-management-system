@@ -159,7 +159,7 @@ export default function BooksPage() {
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <p className="text-xs text-stone-500">
           {orderBy === "series"
-            ? "Grouped by serial number (e.g. A-12, A-12(2), A-13)."
+            ? "Grouped by serial number (e.g. A-12, A-12(1), A-12(2), A-13)."
             : "Newest additions first — serial numbers are unchanged."}
         </p>
         <OrderModeToggle value={orderBy} onChange={(v) => { setOrderBy(v); setPage(1); }} />

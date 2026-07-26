@@ -9,7 +9,7 @@ interface Props {
 
 /**
  * Lets the user switch between:
- *  - Series Order: grouped/sorted by serial number (A-12, A-12(2), A-13, ...)
+ *  - Series Order: grouped/sorted by serial number (A-12, A-12(1), A-12(2), A-13, ...)
  *  - Latest Added Order: newest-added books/copies first, serial numbers unchanged
  *
  * Used on the Books list, Reports (PDF/Excel export), and anywhere else that
