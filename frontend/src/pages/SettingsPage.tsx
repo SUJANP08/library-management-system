@@ -14,7 +14,7 @@ export default function SettingsPage() {
   const [restoreMsg, setRestoreMsg] = useState<string | null>(null);
 
   const [users, setUsers] = useState<any[]>([]);
-  const [newUser, setNewUser] = useState({ username: "", password: "", full_name: "", role: "staff" });
+  const [newUser, setNewUser] = useState({ username: "", password: "", full_name: "", mobile_number: "", role: "viewer" });
 
   const [loginHistory, setLoginHistory] = useState<any[]>([]);
 
@@ -70,8 +70,9 @@ export default function SettingsPage() {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setRestoreMsg(
-        `Restored: ${res.data.books_restored} books, ${res.data.magazines_restored} magazines, ` +
-        `${res.data.series_restored} series, ${res.data.sub_series_restored ?? 0} sub-series.`
+        `Restored: ${res.data.users_restored ?? 0} user account(s), ${res.data.books_restored} books, ` +
+        `${res.data.magazines_restored} magazines, ${res.data.series_restored} series, ` +
+        `${res.data.sub_series_restored ?? 0} sub-series.`
       );
     } catch (err: any) {
       setRestoreMsg(err?.response?.data?.detail || "Restore failed");
@@ -83,7 +84,7 @@ export default function SettingsPage() {
   async function handleCreateUser(e: React.FormEvent) {
     e.preventDefault();
     await api.post("/auth/users", newUser);
-    setNewUser({ username: "", password: "", full_name: "", role: "staff" });
+    setNewUser({ username: "", password: "", full_name: "", mobile_number: "", role: "viewer" });
     loadUsers();
   }
 
@@ -110,7 +111,7 @@ export default function SettingsPage() {
           Signed in as <strong className="text-stone-900">{user?.username}</strong>{" "}
           <span className="badge-brand capitalize">{user?.role}</span>
         </p>
-        <p className="text-xs text-stone-400 pt-1">KAK Library Management System — v1.3.0</p>
+        <p className="text-xs text-stone-400 pt-1">KAK Library Management System — v1.5.0</p>
       </div>
 
       {isAdmin && (
@@ -118,7 +119,9 @@ export default function SettingsPage() {
           <div className="card card-pad space-y-3">
             <h3 className="section-title">Backup</h3>
             <p className="text-xs text-stone-500">
-              Download a full JSON snapshot of all series, sub-series, books, copies, magazines, and issues.
+              Download a full JSON snapshot of all series, sub-series, books, copies, magazines, issues,
+              and user accounts (including passwords, stored securely — never in plain text). Restoring
+              this file brings everyone's logins back exactly as they were.
             </p>
             <button onClick={handleExport} className="btn-primary">
               <IconDownload className="w-4 h-4" /> Download Backup
@@ -159,35 +162,63 @@ export default function SettingsPage() {
 
           <div className="card card-pad space-y-3">
             <h3 className="section-title flex items-center gap-1.5">
-              <IconUsers className="w-4 h-4" /> User Management
+              <IconUsers className="w-4 h-4" /> Registered Users
             </h3>
-            <div className="space-y-2">
-              {users.map((u) => (
-                <div key={u.id} className="flex justify-between items-center text-sm bg-stone-50 rounded-lg px-3 py-2.5">
-                  <span className="flex items-center gap-2">
-                    {u.username}
-                    <span className="badge-gray capitalize flex items-center gap-1">
-                      {u.role === "admin" && <IconShield className="w-3 h-3" />} {u.role}
-                    </span>
-                  </span>
-                  {u.username !== user?.username && (
-                    <button onClick={() => handleDeleteUser(u.id)} className="text-red-600 text-xs font-semibold flex items-center gap-1">
-                      <IconTrash className="w-3.5 h-3.5" /> Remove
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-            <form onSubmit={handleCreateUser} className="grid sm:grid-cols-2 gap-2.5 pt-2 border-t border-stone-100">
+            <p className="text-xs text-stone-500">
+              Everyone who has an account, including Viewers who signed themselves up.
+            </p>
+            {users.length === 0 ? (
+              <p className="text-sm text-stone-400">No registered users yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-stone-500 border-b border-stone-100">
+                      <th className="py-1.5 pr-3 font-semibold">Name</th>
+                      <th className="py-1.5 pr-3 font-semibold">Mobile Number</th>
+                      <th className="py-1.5 pr-3 font-semibold">Role</th>
+                      <th className="py-1.5 pr-3 font-semibold">Registered</th>
+                      <th className="py-1.5 pr-3 font-semibold"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((u) => (
+                      <tr key={u.id} className="border-b border-stone-50">
+                        <td className="py-1.5 pr-3 text-stone-800">{u.full_name || u.username}</td>
+                        <td className="py-1.5 pr-3 text-stone-600">{u.mobile_number || "—"}</td>
+                        <td className="py-1.5 pr-3">
+                          <span className="badge-gray capitalize flex items-center gap-1 w-fit">
+                            {u.role === "admin" && <IconShield className="w-3 h-3" />} {u.role}
+                          </span>
+                        </td>
+                        <td className="py-1.5 pr-3 text-stone-500">
+                          {u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}
+                        </td>
+                        <td className="py-1.5 pr-3 text-right">
+                          {u.username !== user?.username && (
+                            <button onClick={() => handleDeleteUser(u.id)} className="text-red-600 text-xs font-semibold flex items-center gap-1 ml-auto">
+                              <IconTrash className="w-3.5 h-3.5" /> Remove
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <form onSubmit={handleCreateUser} className="grid sm:grid-cols-2 gap-2.5 pt-3 border-t border-stone-100">
               <input className="input-field mt-2.5" placeholder="Username"
                      value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} required />
               <input type="password" className="input-field mt-2.5" placeholder="Password"
                      value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} required />
               <input className="input-field" placeholder="Full name"
                      value={newUser.full_name} onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })} />
+              <input className="input-field" placeholder="Mobile number"
+                     value={newUser.mobile_number} onChange={(e) => setNewUser({ ...newUser, mobile_number: e.target.value })} />
               <select className="select-field" value={newUser.role}
                       onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}>
-                <option value="staff">Staff</option>
+                <option value="viewer">Viewer</option>
                 <option value="admin">Admin</option>
               </select>
               <button type="submit" className="sm:col-span-2 btn-primary">

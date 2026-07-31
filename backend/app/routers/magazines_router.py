@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/magazines", tags=["Taranga"])
 
 @router.get("/taranga-series", response_model=schemas.SeriesOut)
 def get_taranga_series(db: Session = Depends(get_db),
-                        _user: models.User = Depends(auth.get_current_user)):
+                        _admin: models.User = Depends(auth.require_admin)):
     """
     Returns the single fixed Series that Taranga entries always belong to
     (auto-created if it doesn't exist yet). Lets the frontend show which
@@ -38,7 +38,7 @@ def list_magazines(
     search: Optional[str] = None,
     series_id: Optional[int] = None,
     db: Session = Depends(get_db),
-    _user: models.User = Depends(auth.get_current_user),
+    _admin: models.User = Depends(auth.require_admin),
 ):
     q = db.query(models.Magazine).options(joinedload(models.Magazine.series), joinedload(models.Magazine.issues))
     if series_id:
@@ -51,7 +51,7 @@ def list_magazines(
 
 @router.post("/quick-add", response_model=schemas.MagazineOut)
 def quick_add_taranga(payload: schemas.TarangaCreate, db: Session = Depends(get_db),
-                       _user: models.User = Depends(auth.get_current_user)):
+                       _admin: models.User = Depends(auth.require_admin)):
     """
     Simplified Taranga entry: only title and month are required. The series
     is always the fixed Taranga series, resolved automatically (never asked
@@ -65,14 +65,14 @@ def quick_add_taranga(payload: schemas.TarangaCreate, db: Session = Depends(get_
 
 @router.post("", response_model=schemas.MagazineOut)
 def create_magazine(payload: schemas.MagazineCreate, db: Session = Depends(get_db),
-                     _user: models.User = Depends(auth.get_current_user)):
+                     _admin: models.User = Depends(auth.require_admin)):
     magazine, _ = crud.create_magazine_or_next_issue(db, payload)
     return _mag_to_out(magazine)
 
 
 @router.put("/{magazine_id}", response_model=schemas.MagazineOut)
 def update_magazine(magazine_id: int, payload: schemas.MagazineUpdate, db: Session = Depends(get_db),
-                     _user: models.User = Depends(auth.get_current_user)):
+                     _admin: models.User = Depends(auth.require_admin)):
     magazine = db.query(models.Magazine).filter(models.Magazine.id == magazine_id).first()
     if not magazine:
         raise HTTPException(status_code=404, detail="Taranga not found")
@@ -99,7 +99,7 @@ def delete_magazine(magazine_id: int, db: Session = Depends(get_db),
 
 @router.post("/issues", response_model=schemas.MagazineOut)
 def add_issue(payload: schemas.MagazineIssueCreate, db: Session = Depends(get_db),
-              _user: models.User = Depends(auth.get_current_user)):
+              _admin: models.User = Depends(auth.require_admin)):
     magazine = db.query(models.Magazine).filter(models.Magazine.id == payload.magazine_id).first()
     if not magazine:
         raise HTTPException(status_code=404, detail="Taranga not found")

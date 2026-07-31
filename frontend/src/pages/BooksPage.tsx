@@ -42,7 +42,7 @@ export default function BooksPage() {
   // Quick Action from Dashboard / Category Finder: ?action=add opens the Add Book
   // form directly, optionally pre-filled with series_id, sub_series_id, title, author.
   useEffect(() => {
-    if (searchParams.get("action") === "add") {
+    if (isAdmin && searchParams.get("action") === "add") {
       setEditingBook(null);
       setFormInitial({
         series_id: searchParams.get("series_id") || undefined,
@@ -53,7 +53,7 @@ export default function BooksPage() {
       setShowForm(true);
       setSearchParams({}, { replace: true });
     }
-  }, [searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams, isAdmin]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -110,12 +110,14 @@ export default function BooksPage() {
           <h2 className="page-title">Books</h2>
           <p className="page-subtitle">{data ? `${data.total} record${data.total === 1 ? "" : "s"}` : "Loading…"}</p>
         </div>
-        <button
-          onClick={() => { setEditingBook(null); setFormInitial(undefined); setShowForm(true); }}
-          className="btn-primary"
-        >
-          <IconPlus className="w-4 h-4" /> Add Book
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => { setEditingBook(null); setFormInitial(undefined); setShowForm(true); }}
+            className="btn-primary"
+          >
+            <IconPlus className="w-4 h-4" /> Add Book
+          </button>
+        )}
       </div>
 
       {/* Search & filter - inputs work natively with Gboard voice typing & handwriting */}
@@ -212,19 +214,21 @@ export default function BooksPage() {
                       </div>
                     ))}
                     <div className="flex gap-4 pt-2 text-xs">
-                      <button onClick={() => handleAddCopy(book)} className="text-brand-600 font-semibold flex items-center gap-1">
-                        <IconPlus className="w-3.5 h-3.5" /> Add Copy
-                      </button>
-                      <button
-                        onClick={() => { setEditingBook(book); setFormInitial(undefined); setShowForm(true); }}
-                        className="text-stone-600 font-semibold flex items-center gap-1"
-                      >
-                        <IconEdit className="w-3.5 h-3.5" /> Edit
-                      </button>
                       {isAdmin && (
-                        <button onClick={() => requestDelete(book)} className="text-red-600 font-semibold flex items-center gap-1">
-                          <IconTrash className="w-3.5 h-3.5" /> Delete
-                        </button>
+                        <>
+                          <button onClick={() => handleAddCopy(book)} className="text-brand-600 font-semibold flex items-center gap-1">
+                            <IconPlus className="w-3.5 h-3.5" /> Add Copy
+                          </button>
+                          <button
+                            onClick={() => { setEditingBook(book); setFormInitial(undefined); setShowForm(true); }}
+                            className="text-stone-600 font-semibold flex items-center gap-1"
+                          >
+                            <IconEdit className="w-3.5 h-3.5" /> Edit
+                          </button>
+                          <button onClick={() => requestDelete(book)} className="text-red-600 font-semibold flex items-center gap-1">
+                            <IconTrash className="w-3.5 h-3.5" /> Delete
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>

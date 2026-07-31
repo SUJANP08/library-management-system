@@ -3,21 +3,20 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { DashboardStats } from "../types";
 import { useAuth } from "../context/AuthContext";
-import { IconBook, IconNewspaper, IconReport, IconWand, IconArrowRight, IconLayers, IconFolder, IconSparkle } from "../components/Icons";
+import { IconBook, IconNewspaper, IconReport, IconArrowRight, IconSparkle } from "../components/Icons";
 import HeroOrbScene from "../components/three/HeroOrbScene";
 import TiltCard from "../components/TiltCard";
 
 const quickActions = [
-  { to: "/books?action=add", label: "Add Book", sub: "Add book to catalog", Icon: IconBook, gradient: "from-blue-500 to-indigo-600" },
-  { to: "/taranga?action=add", label: "Add Taranga", sub: "Register a new issue", Icon: IconNewspaper, gradient: "from-emerald-500 to-teal-600" },
-  { to: "/category-finder", label: "Category Finder", sub: "Classify a new title", Icon: IconWand, gradient: "from-accent-400 to-accent-600" },
-  { to: "/reports", label: "Generate Report", sub: "Export catalog data", Icon: IconReport, gradient: "from-brand-400 to-brand-600" },
+  { to: "/books?action=add", label: "Add Book", sub: "Add book to catalog", Icon: IconBook, gradient: "from-blue-500 to-indigo-600", adminOnly: true },
+  { to: "/taranga?action=add", label: "Add Taranga", sub: "Register a new issue", Icon: IconNewspaper, gradient: "from-emerald-500 to-teal-600", adminOnly: true },
+  { to: "/reports", label: "Generate Report", sub: "Export catalog data", Icon: IconReport, gradient: "from-brand-400 to-brand-600", adminOnly: true },
 ];
 
 function StatSkeleton() {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-      {Array.from({ length: 4 }).map((_, i) => (
+    <div className="grid grid-cols-2 gap-3.5">
+      {Array.from({ length: 2 }).map((_, i) => (
         <div key={i} className="card card-pad h-28 space-y-3">
           <div className="skeleton w-9 h-9 rounded-lg" />
           <div className="skeleton w-16 h-3 rounded" />
@@ -33,7 +32,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | false>(false);
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
 
   useEffect(() => {
     api.get("/dashboard/stats")
@@ -65,8 +64,6 @@ export default function Dashboard() {
   const statCards = stats
     ? [
         { label: "Total Books", value: stats.total_books, sub: `+${stats.added_this_month} this month`, Icon: IconBook, gradient: "from-blue-500 to-indigo-600" },
-        { label: "Main Series", value: stats.total_series, sub: "Categories catalogued", Icon: IconLayers, gradient: "from-emerald-500 to-teal-600" },
-        { label: "Sub-Series", value: stats.total_sub_series, sub: "Nested classifications", Icon: IconFolder, gradient: "from-accent-400 to-accent-600" },
         { label: "Taranga Titles", value: stats.total_taranga, sub: "Magazines tracked", Icon: IconNewspaper, gradient: "from-brand-400 to-brand-600" },
       ]
     : [];
@@ -99,7 +96,7 @@ export default function Dashboard() {
       {loading ? (
         <StatSkeleton />
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+        <div className="grid grid-cols-2 gap-3.5">
           {statCards.map((s, i) => (
             <TiltCard
               key={s.label}
@@ -118,28 +115,30 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Quick Actions */}
-      <div className="card card-pad">
-        <h3 className="section-title mb-3.5">Quick Actions</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {quickActions.map((action) => (
-            <TiltCard key={action.label} strength={4} className="rounded-2xl">
-              <button
-                onClick={() => navigate(action.to)}
-                className="group text-left bg-white border border-stone-100 hover:border-transparent rounded-2xl px-3.5 py-4 flex flex-col gap-3 transition-all duration-250 ease-out active:scale-[0.97] hover:shadow-cardHover hover:-translate-y-0.5 w-full h-full"
-              >
-                <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-soft bg-gradient-to-br ${action.gradient} group-hover:scale-110 transition-transform duration-300`}>
-                  <action.Icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
-                </span>
-                <span>
-                  <span className="block font-semibold text-[13px] text-stone-800 leading-tight">{action.label}</span>
-                  <span className="block text-[11px] text-stone-400 mt-1 leading-tight">{action.sub}</span>
-                </span>
-              </button>
-            </TiltCard>
-          ))}
+      {/* Quick Actions - admin only; viewers only browse/view, no catalog actions */}
+      {isAdmin && (
+        <div className="card card-pad">
+          <h3 className="section-title mb-3.5">Quick Actions</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {quickActions.map((action) => (
+              <TiltCard key={action.label} strength={4} className="rounded-2xl">
+                <button
+                  onClick={() => navigate(action.to)}
+                  className="group text-left bg-white border border-stone-100 hover:border-transparent rounded-2xl px-3.5 py-4 flex flex-col gap-3 transition-all duration-250 ease-out active:scale-[0.97] hover:shadow-cardHover hover:-translate-y-0.5 w-full h-full"
+                >
+                  <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-soft bg-gradient-to-br ${action.gradient} group-hover:scale-110 transition-transform duration-300`}>
+                    <action.Icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
+                  </span>
+                  <span>
+                    <span className="block font-semibold text-[13px] text-stone-800 leading-tight">{action.label}</span>
+                    <span className="block text-[11px] text-stone-400 mt-1 leading-tight">{action.sub}</span>
+                  </span>
+                </button>
+              </TiltCard>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Recently Added Books */}
       <div className="card card-pad">

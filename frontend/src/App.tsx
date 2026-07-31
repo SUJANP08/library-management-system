@@ -4,13 +4,13 @@ import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
+import SignupPage from "./pages/SignupPage";
 import Dashboard from "./pages/Dashboard";
 import BooksPage from "./pages/BooksPage";
 import TarangaPage from "./pages/TarangaPage";
 import SeriesPage from "./pages/SeriesPage";
 import ReportsPage from "./pages/ReportsPage";
 import SettingsPage from "./pages/SettingsPage";
-import CategoryFinderPage from "./pages/CategoryFinderPage";
 
 export default function App() {
   return (
@@ -18,6 +18,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<SignupPage />} />
           <Route
             path="/"
             element={
@@ -28,10 +29,30 @@ export default function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="books" element={<BooksPage />} />
-            <Route path="taranga" element={<TarangaPage />} />
-            <Route path="series" element={<SeriesPage />} />
-            <Route path="category-finder" element={<CategoryFinderPage />} />
-            <Route path="reports" element={<ReportsPage />} />
+            <Route
+              path="taranga"
+              element={
+                <ProtectedRoute adminOnly>
+                  <TarangaPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="series"
+              element={
+                <ProtectedRoute adminOnly>
+                  <SeriesPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="reports"
+              element={
+                <ProtectedRoute adminOnly>
+                  <ReportsPage />
+                </ProtectedRoute>
+              }
+            />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>

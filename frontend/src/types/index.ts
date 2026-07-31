@@ -1,6 +1,6 @@
 export type MaterialType = "book" | "magazine" | "other";
 export type CopyStatus = "available" | "issued" | "lost" | "damaged" | "withdrawn";
-export type UserRole = "admin" | "staff";
+export type UserRole = "admin" | "viewer";
 
 export interface Series {
   id: number;
@@ -64,46 +64,6 @@ export interface PaginatedBooks {
   page: number;
   page_size: number;
   items: Book[];
-}
-
-export interface ExactMatch {
-  book_id: number;
-  display_serial: string;
-  title: string;
-  author: string;
-  series_id: number;
-  series_code: string;
-  series_name: string;
-  sub_series_id?: number | null;
-  sub_series_name?: string | null;
-}
-
-export interface CategorySuggestion {
-  series_id: number;
-  series_code: string;
-  series_name: string;
-  sub_series_id?: number | null;
-  sub_series_name?: string | null;
-  confidence: number;
-  reason: string;
-}
-
-export interface CategorySuggestionResponse {
-  exact_match?: ExactMatch | null;
-  suggestions: CategorySuggestion[];
-  similar_titles: ExactMatch[];
-  ml_active: boolean;
-  trained_on_books: number;
-  recommend_new_category: boolean;
-}
-
-export interface ModelStatus {
-  sklearn_available: boolean;
-  active: boolean;
-  trained_on_books: number;
-  classes: number;
-  total_books: number;
-  min_books_required: number;
 }
 
 export interface MagazineIssue {

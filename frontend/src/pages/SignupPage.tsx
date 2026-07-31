@@ -1,26 +1,36 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { IconBook, IconLayers, IconNewspaper } from "../components/Icons";
 import TiltCard from "../components/TiltCard";
 
-export default function Login() {
-  const { login } = useAuth();
+export default function SignupPage() {
+  const { register } = useAuth();
   const navigate = useNavigate();
-  const [username, setUsername] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [mobileNumber, setMobileNumber] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (!/^\d{7,15}$/.test(mobileNumber.trim())) {
+      setError("Please enter a valid mobile number (digits only).");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
     setLoading(true);
     try {
-      await login(username, password);
+      // Mobile number doubles as the login username - nothing extra to remember.
+      await register(fullName, mobileNumber.trim(), password);
       navigate("/");
     } catch (err: any) {
-      setError(err?.response?.data?.detail || "Login failed. Please check your credentials.");
+      setError(err?.response?.data?.detail || "Could not create account. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -45,11 +55,10 @@ export default function Login() {
               <span className="text-white">Sri Kutlaya</span><br /><span className="text-shimmer">Adhyayna Kendra(R)</span>
             </h1>
             <p className="text-cream-200/60 text-sm mt-3 leading-relaxed max-w-xs">
-              ಶ್ರೀ ಕುಟ್ಲಯ್ಯ ಅಧ್ಯಯನ ಕೇಂದ್ರ (ರಿ) — A digital home for the library's books
+              Create a Viewer account to browse the catalog — see what's in the library and how many
+              copies of each title are available.
             </p>
           </div>
-
-          
         </div>
 
         {/* Right: form panel */}
@@ -59,21 +68,33 @@ export default function Login() {
               <img src="/brand/kak-logo.jpg" alt="KAK logo" className="w-full h-full object-cover" />
             </div>
             <h2 className="font-display text-2xl font-semibold text-stone-900 mt-4 md:mt-0 tracking-tight">
-              Welcome back
+              Create a Viewer account
             </h2>
-            <p className="text-sm text-stone-400 mt-1.5">Sign in to manage the library</p>
+            <p className="text-sm text-stone-400 mt-1.5">Browse the catalog — view only, no editing access</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="field-label">Username</label>
+              <label className="field-label">Name</label>
               <input
                 autoFocus
                 className="input-field"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                autoComplete="username"
-                placeholder="Viewers: use your mobile number"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                autoComplete="name"
+                required
+              />
+            </div>
+            <div>
+              <label className="field-label">Mobile number</label>
+              <input
+                type="tel"
+                className="input-field"
+                value={mobileNumber}
+                onChange={(e) => setMobileNumber(e.target.value)}
+                autoComplete="tel"
+                placeholder="e.g. 9876543210"
+                inputMode="numeric"
                 required
               />
             </div>
@@ -84,7 +105,20 @@ export default function Login() {
                 className="input-field"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
+                autoComplete="new-password"
+                minLength={4}
+                required
+              />
+            </div>
+            <div>
+              <label className="field-label">Confirm password</label>
+              <input
+                type="password"
+                className="input-field"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
+                minLength={4}
                 required
               />
             </div>
@@ -92,14 +126,14 @@ export default function Login() {
             {error && <p className="text-red-600 text-sm bg-red-50 rounded-xl px-3.5 py-2.5">{error}</p>}
 
             <button type="submit" disabled={loading} className="btn-primary w-full py-3 text-[15px]">
-              {loading ? "Signing in…" : "Sign In"}
+              {loading ? "Creating account…" : "Create Account"}
             </button>
           </form>
 
           <p className="text-xs text-stone-400 text-center md:text-left mt-6">
-            New here?{" "}
-            <Link to="/signup" className="text-brand-600 font-semibold hover:underline">
-              Create a Viewer account
+            Already have an account?{" "}
+            <Link to="/login" className="text-brand-600 font-semibold hover:underline">
+              Sign in
             </Link>
           </p>
         </TiltCard>

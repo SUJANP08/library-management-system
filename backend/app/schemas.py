@@ -21,7 +21,21 @@ class UserCreate(BaseModel):
     username: str
     password: str
     full_name: Optional[str] = None
-    role: UserRole = UserRole.STAFF
+    mobile_number: Optional[str] = None
+    role: UserRole = UserRole.VIEWER
+
+
+class UserRegister(BaseModel):
+    """Public self-registration - always creates a Viewer account. There's no
+    role field here on purpose: anyone hitting this endpoint (no auth
+    required) can only ever create a Viewer, never an Admin.
+    Only four fields are collected: name, mobile number, password, and
+    (client-side only) confirm password. There's no separate username -
+    the mobile number itself is used as the login username, so people
+    don't have to remember two different identifiers."""
+    full_name: str = Field(..., min_length=1, max_length=200)
+    mobile_number: str = Field(..., min_length=6, max_length=20)
+    password: str = Field(..., min_length=4)
 
 
 class UserOut(BaseModel):
@@ -29,8 +43,10 @@ class UserOut(BaseModel):
     id: int
     username: str
     full_name: Optional[str] = None
+    mobile_number: Optional[str] = None
     role: UserRole
     is_active: bool
+    created_at: Optional[datetime] = None
 
 
 class LoginLogOut(BaseModel):
@@ -256,52 +272,6 @@ class DashboardStats(BaseModel):
     total_taranga: int
     added_this_month: int
     recent_additions: List[BookOut]
-
-
-# ---------- Category Finder / Book Classification Assistant ----------
-class CategorySuggestionRequest(BaseModel):
-    title: str
-    author: Optional[str] = None
-
-
-class ExactMatchOut(BaseModel):
-    book_id: int
-    display_serial: str
-    title: str
-    author: str
-    series_id: int
-    series_code: str
-    series_name: str
-    sub_series_id: Optional[int] = None
-    sub_series_name: Optional[str] = None
-
-
-class CategorySuggestionOut(BaseModel):
-    series_id: int
-    series_code: str
-    series_name: str
-    sub_series_id: Optional[int] = None
-    sub_series_name: Optional[str] = None
-    confidence: float  # 0-1
-    reason: str
-
-
-class CategorySuggestionResponse(BaseModel):
-    exact_match: Optional[ExactMatchOut] = None
-    suggestions: List[CategorySuggestionOut] = []
-    similar_titles: List[ExactMatchOut] = []
-    ml_active: bool = False
-    trained_on_books: int = 0
-    recommend_new_category: bool = False
-
-
-class ModelStatusOut(BaseModel):
-    sklearn_available: bool
-    active: bool
-    trained_on_books: int
-    classes: int
-    total_books: int
-    min_books_required: int
 
 
 # ---------- Pagination wrapper ----------

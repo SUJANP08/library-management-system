@@ -5,6 +5,7 @@ import type { AuthUser } from "../types";
 interface AuthContextValue {
   user: AuthUser | null;
   login: (username: string, password: string) => Promise<void>;
+  register: (fullName: string, mobileNumber: string, password: string) => Promise<void>;
   logout: () => void;
   isAdmin: boolean;
 }
@@ -14,7 +15,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(() => {
     const username = localStorage.getItem("lms_username");
-    const role = localStorage.getItem("lms_role") as "admin" | "staff" | null;
+    const role = localStorage.getItem("lms_role") as "admin" | "viewer" | null;
     return username && role ? { username, role } : null;
   });
 
@@ -31,6 +32,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser({ username: res.data.username, role: res.data.role });
   }, []);
 
+  const register = useCallback(async (fullName: string, mobileNumber: string, password: string) => {
+    // Always creates a Viewer account - the backend ignores/rejects any
+    // attempt to self-assign a different role. The mobile number doubles as
+    // the login username. Log in immediately after so the new viewer lands
+    // straight in the app.
+    await api.post("/auth/register", { full_name: fullName, mobile_number: mobileNumber, password });
+    await login(mobileNumber, password);
+  }, [login]);
+
   const logout = useCallback(() => {
     localStorage.removeItem("lms_token");
     localStorage.removeItem("lms_role");
@@ -39,7 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAdmin: user?.role === "admin" }}>
+    <AuthContext.Provider value={{ user, login, register, logout, isAdmin: user?.role === "admin" }}>
       {children}
     </AuthContext.Provider>
   );

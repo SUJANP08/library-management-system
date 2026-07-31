@@ -6,7 +6,7 @@ library — books, magazines, and any future material types — built with:
 - **Frontend:** React + TypeScript + Tailwind CSS (mobile-first, Android-friendly)
 - **Backend:** FastAPI (Python)
 - **Database:** SQLite by default, PostgreSQL supported for larger deployments
-- **Auth:** JWT-based login with Admin / Staff roles
+- **Auth:** JWT-based login with Admin / Viewer roles
 - **Reports:** Printable PDF and Excel exports
 - **Deployment:** Docker & Docker Compose
 
@@ -159,12 +159,16 @@ npm run dev
 ## 5. Authentication & Roles
 
 - **Admin** — full access: manage series, users, delete records, import/
-  restore data.
-- **Staff** — add/edit books, magazines, issues, copies; generate reports;
-  cannot delete series or manage users.
+  restore data, magazines/Taranga, and reports.
+- **Viewer** — read-only: browse/search the book catalog and see catalog
+  counts on the Dashboard. Cannot add/edit/delete anything, and cannot see
+  Taranga, Series, or Reports.
 
-Create additional users from Settings → User Management (admin only), or via
-the API: `POST /api/auth/users`.
+Anyone can create their own Viewer account from the Login screen's "Create a
+Viewer account" link (`POST /api/auth/register`, no login required — it
+always creates a Viewer, never an Admin). Admins can create additional
+Viewer or Admin accounts from Settings → User Management, or via the API:
+`POST /api/auth/users`.
 
 ---
 
@@ -206,11 +210,15 @@ GET /api/reports/books/excel?series_code=A&author=Kuvempu
 ## 8. Backup & Restore
 
 - **Export:** Settings → Backup → Download Backup (admin only). Produces a
-  timestamped JSON file containing all series, books, copies, magazines, and
-  issues (passwords are never included).
+  timestamped JSON file containing all series, books, copies, magazines,
+  issues, and user accounts (each account's hashed password is included, so a
+  restore brings logins back exactly as they were — the plaintext password
+  itself is never recoverable from the hash).
 - **Restore:** Settings → Restore → upload a previously exported JSON file.
   Choose "Erase existing data" for a full replace, or leave unchecked to
-  merge/insert.
+  merge/insert. User accounts are always merged/upserted by username and are
+  never erased by "Erase existing data", so restoring can't lock out the
+  admin currently signed in.
 - **Raw SQLite backup:** `GET /api/backup/download-sqlite` (admin only, SQLite
   deployments only) downloads the live `.db` file directly.
 - Automate periodic backups by calling `GET /api/backup/export` from a cron

@@ -152,7 +152,7 @@ def export_books_excel(
         "series", pattern="^(series|latest)$",
         description="'series' groups by serial number; 'latest' shows newest-added copies first.",
     ),
-    db: Session = Depends(get_db), _user: models.User = Depends(auth.get_current_user),
+    db: Session = Depends(get_db), _admin: models.User = Depends(auth.require_admin),
 ):
     rows, title = _collect_rows(db, series_id, series_code, sub_series_id, author, search, order_by)
     xlsx_bytes = generate_books_excel(rows, title, order_label=ORDER_LABELS[order_by])

@@ -132,7 +132,7 @@ def get_book(book_id: int, db: Session = Depends(get_db),
 
 @router.post("", response_model=schemas.BookOut)
 def create_book(payload: schemas.BookCreate, db: Session = Depends(get_db),
-                 _user: models.User = Depends(auth.get_current_user)):
+                 _admin: models.User = Depends(auth.require_admin)):
     """
     Adds a new book. If title+author already exist in this series, this
     automatically registers it as an additional copy (A-74(1), A-74(2)...)
@@ -145,7 +145,7 @@ def create_book(payload: schemas.BookCreate, db: Session = Depends(get_db),
 
 @router.post("/add-copy", response_model=schemas.BookOut)
 def add_copy(payload: schemas.AddCopyRequest, db: Session = Depends(get_db),
-             _user: models.User = Depends(auth.get_current_user)):
+             _admin: models.User = Depends(auth.require_admin)):
     """Explicitly add another physical copy to an existing book record."""
     book = crud.add_copy_to_book(db, payload.book_id, payload.acquired_date, payload.remarks)
     return _book_to_out(book)
@@ -153,7 +153,7 @@ def add_copy(payload: schemas.AddCopyRequest, db: Session = Depends(get_db),
 
 @router.put("/{book_id}", response_model=schemas.BookOut)
 def update_book(book_id: int, payload: schemas.BookUpdate, db: Session = Depends(get_db),
-                 _user: models.User = Depends(auth.get_current_user)):
+                 _admin: models.User = Depends(auth.require_admin)):
     book = db.query(models.Book).filter(models.Book.id == book_id).first()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
@@ -207,7 +207,7 @@ def delete_copy(book_id: int, copy_id: int, db: Session = Depends(get_db),
 
 @router.put("/{book_id}/copies/{copy_id}", response_model=schemas.BookCopyOut)
 def update_copy(book_id: int, copy_id: int, payload: schemas.BookCopyUpdate,
-                 db: Session = Depends(get_db), _user: models.User = Depends(auth.get_current_user)):
+                 db: Session = Depends(get_db), _admin: models.User = Depends(auth.require_admin)):
     copy = db.query(models.BookCopy).filter(
         models.BookCopy.id == copy_id, models.BookCopy.book_id == book_id).first()
     if not copy:

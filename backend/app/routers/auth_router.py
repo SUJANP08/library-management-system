@@ -78,15 +78,44 @@ def read_current_user(current_user: models.User = Depends(auth.get_current_user)
     return current_user
 
 
+@router.post("/register", response_model=schemas.UserOut)
+def register_viewer(payload: schemas.UserRegister, db: Session = Depends(get_db)):
+    """
+    Public, no login required: anyone can create their own account here, but
+    it is always created with the Viewer role (view-only access to the book
+    catalog and counts) - never Admin. Admins are created separately via the
+    admin-only POST /users endpoint below.
+
+    Only name, mobile number, and password are collected (confirm password
+    is checked client-side). The mobile number doubles as the login
+    username, so there's nothing extra to remember.
+    """
+    mobile = payload.mobile_number.strip()
+    if db.query(models.User).filter(models.User.username == mobile).first():
+        raise HTTPException(status_code=400, detail="An account with this mobile number already exists")
+    user = models.User(
+        username=mobile,
+        full_name=payload.full_name,
+        mobile_number=mobile,
+        hashed_password=auth.get_password_hash(payload.password),
+        role=models.UserRole.VIEWER,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 @router.post("/users", response_model=schemas.UserOut)
 def create_user(payload: schemas.UserCreate, db: Session = Depends(get_db),
                  _admin: models.User = Depends(auth.require_admin)):
-    """Admin-only: create additional staff/admin accounts."""
+    """Admin-only: create additional viewer/admin accounts."""
     if db.query(models.User).filter(models.User.username == payload.username).first():
         raise HTTPException(status_code=400, detail="Username already exists")
     user = models.User(
         username=payload.username,
         full_name=payload.full_name,
+        mobile_number=payload.mobile_number,
         hashed_password=auth.get_password_hash(payload.password),
         role=payload.role,
     )

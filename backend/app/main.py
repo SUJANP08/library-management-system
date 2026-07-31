@@ -7,18 +7,39 @@ Run with:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from sqlalchemy import text, inspect
+
 from app.database import Base, engine, SessionLocal
 from app.config import settings
 from app import models, auth
 from app.routers import (
     auth_router, series_router, books_router, magazines_router,
     reports_router, backup_router, dashboard_router,
-    sub_series_router, category_finder_router,
+    sub_series_router,
 )
 
 # Create all tables if they don't exist yet (for simple deployments).
 # For production with evolving schema, use Alembic migrations instead.
 Base.metadata.create_all(bind=engine)
+
+
+def migrate_add_mobile_number_column():
+    """
+    create_all() only creates missing TABLES, not missing COLUMNS on tables
+    that already exist. Deployments running before mobile_number was added
+    to the users table need it added in place, or registration/login will
+    break with a "no such column" error. Safe to run every startup - it's a
+    no-op once the column exists.
+    """
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+    columns = {col["name"] for col in inspector.get_columns("users")}
+    if "mobile_number" in columns:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE users ADD COLUMN mobile_number VARCHAR(20)"))
+    print("[bootstrap] Added missing 'mobile_number' column to users table.")
 
 
 def bootstrap_admin():
@@ -87,7 +108,7 @@ def bootstrap_default_sub_series():
 app = FastAPI(
     title="Library Management System API",
     description="Central API for books, magazines, series management, reports, and backups.",
-    version="1.3.0",
+    version="1.5.0",
 )
 
 app.add_middleware(
@@ -106,11 +127,11 @@ app.include_router(magazines_router.router)
 app.include_router(reports_router.router)
 app.include_router(backup_router.router)
 app.include_router(dashboard_router.router)
-app.include_router(category_finder_router.router)
 
 
 @app.on_event("startup")
 def on_startup():
+    migrate_add_mobile_number_column()
     bootstrap_admin()
     bootstrap_default_series()
     bootstrap_default_sub_series()

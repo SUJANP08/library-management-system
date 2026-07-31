@@ -38,12 +38,17 @@ def _serialize_table(rows, exclude=("hashed_password",)):
 def export_backup(db: Session = Depends(get_db), admin: models.User = Depends(auth.require_admin)):
     """
     Full JSON export of all library data (series, books, copies, magazines,
-    issues). User accounts/passwords are excluded for security.
+    issues) AND user accounts, including each account's hashed password, so a
+    restore brings logins back exactly as they were - nobody has to be
+    recreated or reset a password after a restore. The password itself is
+    never recoverable from the hash, only the ability to log back in with
+    the same password is preserved.
     """
     data = {
         "exported_at": datetime.utcnow().isoformat(),
         "exported_by": admin.username,
-        "version": "1.1",
+        "version": "1.2",
+        "users": _serialize_table(db.query(models.User).all(), exclude=()),
         "series": _serialize_table(db.query(models.Series).all()),
         "sub_series": _serialize_table(db.query(models.SubSeries).all()),
         "books": _serialize_table(db.query(models.Book).all()),
@@ -72,7 +77,7 @@ def export_backup(db: Session = Depends(get_db), admin: models.User = Depends(au
         log = models.BackupLog(
             filename=filename, created_by=admin.username,
             record_count=(
-                len(data["series"]) + len(data["sub_series"]) + len(data["books"])
+                len(data["users"]) + len(data["series"]) + len(data["sub_series"]) + len(data["books"])
                 + len(data["book_copies"]) + len(data["magazines"]) + len(data["magazine_issues"])
             ),
         )
@@ -167,6 +172,27 @@ async def import_backup(
         db.query(models.SubSeries).delete()
         db.query(models.Series).delete()
         db.commit()
+        # Note: user accounts are intentionally NOT wiped here even when
+        # wipe_existing=True - restoring/merging logins below should never
+        # lock the currently signed-in admin (or anyone else) out of their
+        # own account. Existing accounts are updated in place instead.
+
+    users_restored = 0
+    for u in data.get("users", []):
+        u = dict(u)
+        u.pop("id", None)
+        if "role" in u:
+            u["role"] = _coerce_enum(u["role"], models.UserRole)
+        clean = {k: v for k, v in u.items() if k not in ("created_at",)}
+        existing_user = db.query(models.User).filter(models.User.username == clean.get("username")).first()
+        if existing_user:
+            for k, v in clean.items():
+                if k != "username":
+                    setattr(existing_user, k, v)
+        else:
+            db.add(models.User(**clean))
+        users_restored += 1
+    db.commit()
 
     series_id_map = {}
     for s in data.get("series", []):
@@ -286,6 +312,7 @@ async def import_backup(
 
     return {
         "detail": "Backup restored successfully",
+        "users_restored": users_restored,
         "series_restored": len(series_id_map),
         "sub_series_restored": len(sub_series_id_map),
         "books_restored": len(book_id_map),

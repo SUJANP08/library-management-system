@@ -2,17 +2,16 @@ import React from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import {
-  IconDashboard, IconBook, IconNewspaper, IconLayers, IconWand, IconReport, IconSettings, IconLogout,
+  IconDashboard, IconBook, IconNewspaper, IconLayers, IconReport, IconSettings, IconLogout,
 } from "./Icons";
 
 const navItems = [
-  { to: "/", label: "Dashboard", Icon: IconDashboard, end: true },
-  { to: "/books", label: "Books", Icon: IconBook },
-  { to: "/taranga", label: "Taranga", Icon: IconNewspaper },
-  { to: "/series", label: "Series", Icon: IconLayers },
-  { to: "/category-finder", label: "Category Finder", Icon: IconWand },
-  { to: "/reports", label: "Reports", Icon: IconReport },
-  { to: "/settings", label: "Settings", Icon: IconSettings },
+  { to: "/", label: "Dashboard", Icon: IconDashboard, end: true, adminOnly: false },
+  { to: "/books", label: "Books", Icon: IconBook, adminOnly: false },
+  { to: "/taranga", label: "Taranga", Icon: IconNewspaper, adminOnly: true },
+  { to: "/series", label: "Series", Icon: IconLayers, adminOnly: true },
+  { to: "/reports", label: "Reports", Icon: IconReport, adminOnly: true },
+  { to: "/settings", label: "Settings", Icon: IconSettings, adminOnly: false },
 ];
 
 // Mobile bottom nav shows a curated subset so it doesn't overcrowd small screens.
@@ -27,8 +26,11 @@ function BrandMark({ className = "w-10 h-10" }: { className?: string }) {
 }
 
 export default function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
   const location = useLocation();
+
+  const visibleNavItems = navItems.filter((i) => !i.adminOnly || isAdmin);
+  const visibleMobileNavItems = mobileNavItems.filter((i) => !i.adminOnly || isAdmin);
 
   return (
     <div className="min-h-screen app-bg flex flex-col md:flex-row">
@@ -53,7 +55,7 @@ export default function Layout() {
         </div>
 
         <nav className="relative flex-1 px-3.5 py-4 space-y-1 overflow-y-auto">
-          {navItems.map(({ to, label, Icon, end }) => (
+          {visibleNavItems.map(({ to, label, Icon, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -106,7 +108,7 @@ export default function Layout() {
             Sign out
           </button>
         </div>
-        <p className="relative text-center text-[10px] text-cream-200/40 pb-3">v1.3.0</p>
+        <p className="relative text-center text-[10px] text-cream-200/40 pb-3">v1.5.0</p>
       </aside>
 
       {/* Mobile top bar */}
@@ -134,7 +136,7 @@ export default function Layout() {
 
       {/* Mobile bottom nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-20 bg-white/85 backdrop-blur-xl border-t border-white/60 flex justify-around shadow-[0_-8px_30px_-8px_rgba(22,17,13,0.18)] pb-[env(safe-area-inset-bottom)]">
-        {mobileNavItems.map(({ to, label, Icon, end }) => (
+        {visibleMobileNavItems.map(({ to, label, Icon, end }) => (
           <NavLink
             key={to}
             to={to}

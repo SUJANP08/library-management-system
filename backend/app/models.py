@@ -46,7 +46,7 @@ class CopyStatus(str, enum.Enum):
 
 class UserRole(str, enum.Enum):
     ADMIN = "admin"
-    STAFF = "staff"
+    VIEWER = "viewer"
 
 
 class User(Base):
@@ -55,8 +55,9 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(100), unique=True, nullable=False, index=True)
     full_name = Column(String(200), nullable=True)
+    mobile_number = Column(String(20), nullable=True)
     hashed_password = Column(String(255), nullable=False)
-    role = Column(Enum(UserRole), default=UserRole.STAFF, nullable=False)
+    role = Column(Enum(UserRole), default=UserRole.VIEWER, nullable=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

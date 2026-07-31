@@ -37,7 +37,7 @@ def list_sub_series(
 
 @router.post("", response_model=schemas.SubSeriesOut)
 def create_sub_series(payload: schemas.SubSeriesCreate, db: Session = Depends(get_db),
-                       _user: models.User = Depends(auth.get_current_user)):
+                       _admin: models.User = Depends(auth.require_admin)):
     series = db.query(models.Series).filter(models.Series.id == payload.series_id).first()
     if not series:
         raise HTTPException(status_code=404, detail="Main Series not found")
@@ -60,7 +60,7 @@ def create_sub_series(payload: schemas.SubSeriesCreate, db: Session = Depends(ge
 
 @router.put("/{sub_series_id}", response_model=schemas.SubSeriesOut)
 def update_sub_series(sub_series_id: int, payload: schemas.SubSeriesUpdate, db: Session = Depends(get_db),
-                       _user: models.User = Depends(auth.get_current_user)):
+                       _admin: models.User = Depends(auth.require_admin)):
     sub = db.query(models.SubSeries).filter(models.SubSeries.id == sub_series_id).first()
     if not sub:
         raise HTTPException(status_code=404, detail="Sub-Series not found")
