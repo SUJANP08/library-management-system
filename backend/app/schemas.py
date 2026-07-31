@@ -29,12 +29,12 @@ class UserRegister(BaseModel):
     """Public self-registration - always creates a Viewer account. There's no
     role field here on purpose: anyone hitting this endpoint (no auth
     required) can only ever create a Viewer, never an Admin.
-    Only four fields are collected: name, mobile number, password, and
-    (client-side only) confirm password. There's no separate username -
-    the mobile number itself is used as the login username, so people
-    don't have to remember two different identifiers."""
+    Only three fields are collected: name, password, and (client-side only)
+    confirm password. There's no separate username - the name itself is
+    used as the login username (auto-deduplicated on the backend if it's
+    already taken), so people don't have to remember two different
+    identifiers."""
     full_name: str = Field(..., min_length=1, max_length=200)
-    mobile_number: str = Field(..., min_length=6, max_length=20)
     password: str = Field(..., min_length=4)
 
 

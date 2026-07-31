@@ -7,7 +7,6 @@ export default function SignupPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
   const [fullName, setFullName] = useState("");
-  const [mobileNumber, setMobileNumber] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -16,18 +15,13 @@ export default function SignupPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (!/^\d{7,15}$/.test(mobileNumber.trim())) {
-      setError("Please enter a valid mobile number (digits only).");
-      return;
-    }
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
     }
     setLoading(true);
     try {
-      // Mobile number doubles as the login username - nothing extra to remember.
-      await register(fullName, mobileNumber.trim(), password);
+      await register(fullName.trim(), password);
       navigate("/");
     } catch (err: any) {
       setError(err?.response?.data?.detail || "Could not create account. Please try again.");
@@ -82,19 +76,6 @@ export default function SignupPage() {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 autoComplete="name"
-                required
-              />
-            </div>
-            <div>
-              <label className="field-label">Mobile number</label>
-              <input
-                type="tel"
-                className="input-field"
-                value={mobileNumber}
-                onChange={(e) => setMobileNumber(e.target.value)}
-                autoComplete="tel"
-                placeholder="e.g. 9876543210"
-                inputMode="numeric"
                 required
               />
             </div>

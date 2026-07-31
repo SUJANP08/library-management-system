@@ -86,17 +86,25 @@ def register_viewer(payload: schemas.UserRegister, db: Session = Depends(get_db)
     catalog and counts) - never Admin. Admins are created separately via the
     admin-only POST /users endpoint below.
 
-    Only name, mobile number, and password are collected (confirm password
-    is checked client-side). The mobile number doubles as the login
-    username, so there's nothing extra to remember.
+    Only name and password are collected (confirm password is checked
+    client-side). The name doubles as the login username, so there's
+    nothing extra to remember. If that name is already taken, a number is
+    appended automatically (e.g. "Ramesh" -> "Ramesh2") and the resulting
+    username is returned to the caller so it can log in right away.
     """
-    mobile = payload.mobile_number.strip()
-    if db.query(models.User).filter(models.User.username == mobile).first():
-        raise HTTPException(status_code=400, detail="An account with this mobile number already exists")
+    base = payload.full_name.strip()
+    if not base:
+        raise HTTPException(status_code=400, detail="Please enter your name")
+
+    username = base
+    suffix = 2
+    while db.query(models.User).filter(models.User.username == username).first():
+        username = f"{base}{suffix}"
+        suffix += 1
+
     user = models.User(
-        username=mobile,
-        full_name=payload.full_name,
-        mobile_number=mobile,
+        username=username,
+        full_name=base,
         hashed_password=auth.get_password_hash(payload.password),
         role=models.UserRole.VIEWER,
     )

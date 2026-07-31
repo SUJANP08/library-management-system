@@ -73,7 +73,7 @@ export default function Login() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
-                placeholder="Viewers: use your mobile number"
+                placeholder="Viewers: use the name you signed up with"
                 required
               />
             </div>

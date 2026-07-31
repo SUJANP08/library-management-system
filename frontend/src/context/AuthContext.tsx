@@ -5,7 +5,7 @@ import type { AuthUser } from "../types";
 interface AuthContextValue {
   user: AuthUser | null;
   login: (username: string, password: string) => Promise<void>;
-  register: (fullName: string, mobileNumber: string, password: string) => Promise<void>;
+  register: (fullName: string, password: string) => Promise<void>;
   logout: () => void;
   isAdmin: boolean;
 }
@@ -32,13 +32,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser({ username: res.data.username, role: res.data.role });
   }, []);
 
-  const register = useCallback(async (fullName: string, mobileNumber: string, password: string) => {
+  const register = useCallback(async (fullName: string, password: string) => {
     // Always creates a Viewer account - the backend ignores/rejects any
-    // attempt to self-assign a different role. The mobile number doubles as
-    // the login username. Log in immediately after so the new viewer lands
-    // straight in the app.
-    await api.post("/auth/register", { full_name: fullName, mobile_number: mobileNumber, password });
-    await login(mobileNumber, password);
+    // attempt to self-assign a different role. The name doubles as the
+    // login username (the backend de-duplicates it if already taken and
+    // returns the actual username used). Log in immediately after so the
+    // new viewer lands straight in the app.
+    const res = await api.post("/auth/register", { full_name: fullName, password });
+    await login(res.data.username, password);
   }, [login]);
 
   const logout = useCallback(() => {
