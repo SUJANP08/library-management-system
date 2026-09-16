@@ -1,0 +1,34 @@
+# Never bake a database file into the image. The container filesystem is
+# ephemeral, so a .db copied in here is both a stale snapshot AND a
+# guaranteed data-loss trap: the app writes to it and the writes vanish
+# on the next deploy.
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# This repository carries a ~417 MB Windows virtualenv. Copying it into a
+# Linux image is both useless (wrong platform binaries) and a large build
+# slowdown - requirements.txt is what actually installs the dependencies.
+venv/
+.venv/
+env/
+
+# Secrets stay in Render's environment variables, not in the image
+.env
+.env.*
+!.env.example
+
+# Runtime output
+backups/
+uploads/
+
+# Python / VCS noise
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.git/
+.gitignore

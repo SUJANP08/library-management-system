@@ -1,0 +1,31 @@
+# Local SQLite databases.
+#
+# library.db was previously committed to this repository. Because the
+# Dockerfile does `COPY . .`, that baked a snapshot of the database into
+# every image, so each deploy shipped a stale copy of the data and the
+# container started from it instead of from whatever had been entered
+# since. Keep database files out of version control.
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Runtime-generated directories
+backups/
+uploads/
+
+# Secrets - .env.example is the tracked template
+.env
+.env.*
+!.env.example
+
+# Python
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/

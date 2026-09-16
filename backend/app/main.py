@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from sqlalchemy import text, inspect
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import Base, engine, SessionLocal
 from app.config import settings
@@ -17,6 +18,29 @@ from app.routers import (
     reports_router, backup_router, dashboard_router,
     sub_series_router,
 )
+
+
+def warn_if_storage_is_ephemeral():
+    """
+    Fail loudly-in-logs when the app is running on a container host with a
+    SQLite file, which is the exact configuration that silently loses data:
+    the .db file lives in the container's writable layer and is discarded
+    on every restart, redeploy, or host migration. Printed at import time
+    so it is the first thing visible in the Render deploy log.
+    """
+    if settings.is_sqlite and settings.on_container_host:
+        print(
+            "\n" + "!" * 78 +
+            "\n[database] WARNING: SQLite is in use on an ephemeral container filesystem."
+            "\n[database] All library data WILL be lost on the next restart or redeploy."
+            "\n[database] Set DATABASE_URL to a managed Postgres connection string."
+            "\n" + "!" * 78 + "\n"
+        )
+    else:
+        print(f"[database] Using {settings.db_backend} backend.")
+
+
+warn_if_storage_is_ephemeral()
 
 # Create all tables if they don't exist yet (for simple deployments).
 # For production with evolving schema, use Alembic migrations instead.
@@ -113,7 +137,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -148,4 +172,36 @@ def root():
 
 @app.get("/api/health")
 def health_check():
+    """
+    Unchanged existing contract: always returns {"status": "healthy"}.
+    Deliberately touches neither the database nor any writable path, so it
+    stays cheap enough to be polled (see /api/health/db for a real
+    connectivity probe).
+    """
     return {"status": "healthy"}
+
+
+@app.get("/api/health/db")
+def health_check_db():
+    """
+    Read-only database connectivity probe. Runs `SELECT 1` and reports which
+    backend is actually in use - the quickest way to confirm from a browser
+    that Render is really talking to Postgres and not a throwaway SQLite
+    file. Never writes, creates, or migrates anything.
+    """
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        connected = True
+        detail = None
+    except SQLAlchemyError as e:
+        connected = False
+        detail = str(e.__class__.__name__)
+
+    return {
+        "status": "healthy" if connected else "unhealthy",
+        "database": settings.db_backend,
+        "connected": connected,
+        "persistent": settings.storage_is_durable,
+        "detail": detail,
+    }
